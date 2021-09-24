@@ -4,6 +4,9 @@
 const axios = require('axios');
 const credutil = require('fsg-shared/util/credentials');
 
+const playerreceiver = require('./src/playerreceiver');
+
+
 axios.interceptors.response.use(
     response => {
         return response
@@ -37,8 +40,11 @@ async function start() {
         await sleep(2000);
     }
 
-    console.log("[MatchMaker] STARTED @ " + (new Date()).toString());
+
     // wm.connect();
+
+    await playerreceiver.start();
+    console.log("[MatchMaker] STARTED @ " + (new Date()).toString());
 }
 
 start();
