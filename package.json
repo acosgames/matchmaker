@@ -1,0 +1,24 @@
+{
+  "name": "fsg-matchmaker",
+  "version": "1.0.0",
+  "description": "Match making for five second games",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/5SG/fsg-matchmaker.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/5SG/fsg-matchmaker/issues"
+  },
+  "homepage": "https://github.com/5SG/fsg-matchmaker#readme",
+  "dependencies": {
+    "axios": "^0.21.4",
+    "fsg-shared": "file:../fsg-shared",
+    "priorityqueuejs": "^2.0.0"
+  }
+}
