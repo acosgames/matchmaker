@@ -179,7 +179,7 @@ Yallist.prototype.shift = function () {
 Yallist.prototype.forEach = function (fn, thisp) {
     thisp = thisp || this
     for (var walker = this.head, i = 0; walker !== null; i++) {
-        fn.call(thisp, walker.value, i, this)
+        fn.call(thisp, walker.value, i, this, walker)
         walker = walker.next
     }
 }
