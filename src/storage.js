@@ -18,9 +18,24 @@ class Storage {
     }
 
     async getPlayerRank(game_slug) {
+        try {
 
+        }
+        catch (e) {
+
+        }
     }
 
+    async getModes() {
+        try {
+            let modes = await room.getModes();
+            return modes;
+        }
+        catch (e) {
+            console.error(e);
+        }
+        return null;
+    }
     async getGameInfo(game_slug) {
         try {
             let gameinfo = await room.getGameInfo(game_slug);

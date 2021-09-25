@@ -4,6 +4,8 @@
   "description": "Match making for five second games",
   "main": "index.js",
   "scripts": {
+    "start": "npm run dev",
+    "dev": "pm2 start index.js --name fsg-matchmaker --node-args=\"--inspect=10005 --trace-warnings\" --watch \". ../fsg-shared\" --ignore-watch \"package.json node_modules\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

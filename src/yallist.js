@@ -43,6 +43,15 @@ Yallist.prototype.last = function () {
     return this.tail;
 }
 
+Yallist.prototype.print = function () {
+    let output = '';
+    for (var walker = this.head, i = 0; walker !== null; i++) {
+        output += walker.val() + ' -> '
+        walker = walker.next
+    }
+    console.log('output: ', output);
+}
+
 Yallist.prototype.removeNode = function (node) {
     if (node.list !== this) {
         throw new Error('removing node which does not belong to this list')
@@ -448,16 +457,16 @@ Node.prototype.remove = function () {
     this.list.removeNode(this);
     return true;
 }
-Node.prototype.val() = function () {
+Node.prototype.val = function () {
     return this.value;
 }
-Node.prototype.right() = function () {
+Node.prototype.right = function () {
     return this.next;
 }
-Node.prototype.left() = function () {
+Node.prototype.left = function () {
     return this.prev;
 }
-Node.prototype.yallist() = function () {
+Node.prototype.yallist = function () {
     return this.list;
 }
 
