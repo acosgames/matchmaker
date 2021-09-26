@@ -1,5 +1,7 @@
 const rabbitmq = require('fsg-shared/services/rabbitmq');
 const redis = require('fsg-shared/services/redis');
+const room = require('fsg-shared/services/room');
+
 const profiler = require('fsg-shared/util/profiler');
 const credutil = require('fsg-shared/util/credentials');
 const events = require('./events');
@@ -10,7 +12,6 @@ const { genShortId } = require('fsg-shared/util/idgen');
 
 
 const yallist = require('./yallist');
-const room = require('../../fsg-api/node_modules/fsg-shared/services/room');
 
 
 class QueueManager {
@@ -20,6 +21,7 @@ class QueueManager {
         this.timeouts = {};
         this.queues = {};
         this.players = {};
+        this.playerNames = {};
         this.attempts = {};
 
         this.processed = {};
@@ -64,12 +66,18 @@ class QueueManager {
     }
 
     async onAddToQueue(msg) {
-        await this.addToQueue(msg.game_slug, msg.shortid, msg.mode);
+        await this.addToQueue(msg);
     }
-    async addToQueue(game_slug, shortid, mode) {
+    async addToQueue(msg) {
 
-        let playerQueues = this.players[shortid];
+        let game_slug = msg.game_slug;
+        let shortid = msg.user.id;
+        let mode = msg.mode;
+
+        this.playerNames[shortid] = msg.user.name;
+
         //check if player needs to be created
+        let playerQueues = this.players[shortid];
         if (!playerQueues) {
             playerQueues = this.createPlayerQueueMap();
             this.players[shortid] = playerQueues;
@@ -189,7 +197,7 @@ class QueueManager {
         let max = gameinfo.maxplayers;
 
         if (max == 1) {
-            this.createGameAndJoinPlayers(gameinfo, mode, [cur]);
+            await this.createGameAndJoinPlayers(gameinfo, mode, [cur]);
             return true;
         }
 
@@ -213,7 +221,7 @@ class QueueManager {
 
         for (let i = 0; i < lobbies.length; i++) {
             let lobby = lobbies[i];
-            this.createGameAndJoinPlayers(gameinfo, mode, lobby);
+            await this.createGameAndJoinPlayers(gameinfo, mode, lobby);
         }
 
         this.attempts[attemptKey]++;
@@ -235,14 +243,14 @@ class QueueManager {
 
         let cur = list.first();
         if (cur == null)
-            return false;
+            return false; //this should happen, but its here just in case
 
         let min = gameinfo.minplayers;
         let max = gameinfo.maxplayers;
 
+        //single player game, join them immediately
         if (max == 1) {
-            this.createGameAndJoinPlayers(gameinfo, mode, [cur]);
-            //this.attempts[attemptKey] = 1;
+            await this.createGameAndJoinPlayers(gameinfo, mode, [cur]);
             return true;
         }
 
@@ -252,10 +260,13 @@ class QueueManager {
         let modeData = modeInfo.data || {};
 
         let attemptKey = mode + " " + game_slug;
+
+        //default the attempts counter
         if (typeof this.attempts[attemptKey] === 'undefined') {
             this.attempts[attemptKey] = 0;
         }
 
+        //load the mode data for this queue and init the lobbies array
         let lobbies = [];
         let depth = this.attempts[attemptKey];
         let delta = modeData.delta || 50;
@@ -281,18 +292,20 @@ class QueueManager {
             for (let j = 0; j < lobby.length; j++) {
                 group.push(lobby[j]);
                 if (group.length == max) {
-                    this.createGameAndJoinPlayers(gameinfo, mode, group);
+                    await this.createGameAndJoinPlayers(gameinfo, mode, group);
                     group = [];
                 }
                 else if (lobby.length < max && group.length >= min && this.attempts[attemptKey] % 10 == 0) {
-                    this.createGameAndJoinPlayers(gameinfo, mode, group);
+                    await this.createGameAndJoinPlayers(gameinfo, mode, group);
                     group = [];
                 }
             }
         }
 
+        //increase the attempt count so we can widen the range of player compatibiity
         this.attempts[attemptKey]++;
 
+        //no more players, cleanup this queue
         if (list.size() == 0) {
             let attemptKey = mode + " " + game_slug;
             delete this.attempts[attemptKey];
@@ -318,20 +331,96 @@ class QueueManager {
     }
 
 
-    createGameAndJoinPlayers(gameinfo, mode, lobby) {
+    async createGameAndJoinPlayers(gameinfo, mode, lobby) {
+
+
+        //create room using the first player in lobby
+        let shortid = lobby[0].val();
+        let playerQueue = this.players[shortid][mode][gameinfo.game_slug];
+        let room = await this.createRoom(gameinfo.game_slug, mode, shortid, playerQueue.rating || 0);
 
         let attemptKey = mode + " " + gameinfo.game_slug;
-        let id = genShortId(3);
+        let actions = [];
+
+        //loop through lobby to cleanup the player from queues data 
+        // and join them to the newly created room
         for (let i = 0; i < lobby.length; i++) {
             let node = lobby[i];
             let shortid = node.val();
             let playerQueue = this.players[shortid][mode][gameinfo.game_slug];
 
-            console.log("#" + this.count + "[" + id + "] Player '" + shortid + "' joining " + gameinfo.game_slug, playerQueue.rating || 0, this.processed[shortid] ? 'duplicate' : '', this.attempts[attemptKey]);
+            console.log("#" + this.count + "[" + genShortId(5) + "] Player '" + shortid + "' joining " + gameinfo.game_slug, playerQueue.rating || 0, this.processed[shortid] ? 'duplicate' : '', this.attempts[attemptKey]);
             this.processed[shortid] = true;
-            node.remove();
             this.count++;
-            this.players[shortid][mode] = {};
+
+            this.cleanupPlayer(shortid, node, mode);
+
+            //prepare the join messages to gameserver
+            let id = shortid;
+            let name = this.playerNames[shortid];
+            let room_slug = room.room_slug;
+            let msg = {
+                type: 'join',
+                user: { id, name },
+                room_slug
+            }
+            actions.push(msg);
+        }
+
+        await this.sendJoinRequest(gameinfo.game_slug, room.room_slug, actions)
+    }
+
+
+
+    cleanupPlayer(shortid, node, mode) {
+        //cleanup the processed node
+        node.remove();
+
+        //cleanup the queue we just processed, so user isn't added to other games
+        this.players[shortid][mode] = {};
+
+        //cleanup the player queue info
+        let isEmpty = true;
+        for (var m in this.players[shortid]) {
+            let playermode = this.players[shortid][m];
+            let keys = Object.keys(playermode);
+            if (keys.length > 0) {
+                isEmpty = false;
+            }
+        }
+
+        //if player has no queues, delete them to save memory
+        if (isEmpty) {
+            delete this.players[shortid];
+        }
+    }
+
+    async createRoom(game_slug, mode, shortid, rating) {
+        if (mode != 'rank')
+            rating = 0;
+
+        let roomMeta = await room.createRoom(shortid, rating, game_slug, mode);
+        return roomMeta;
+    }
+
+    async sendJoinRequest(game_slug, room_slug, actions) {
+        try {
+
+            //tell our game server to load the game, if one doesn't exist already
+            let msg = {
+                game_slug,
+                room_slug
+            }
+            let exists = await rabbitmq.assertQueue(game_slug);
+            if (!exists) {
+                await rabbitmq.publishQueue('loadGame', msg)
+            }
+
+            //send the join requests to game server
+            await rabbitmq.publishQueue(game_slug, actions);
+        }
+        catch (e) {
+            console.error(e);
         }
     }
 }
@@ -379,6 +468,6 @@ async function test() {
 
 }
 
-start();
+// start();
 
 module.exports = new QueueManager();

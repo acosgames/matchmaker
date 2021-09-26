@@ -2,7 +2,7 @@ const rabbitmq = require('fsg-shared/services/rabbitmq');
 const redis = require('fsg-shared/services/redis');
 const profiler = require('fsg-shared/util/profiler');
 const events = require('./events');
-const queuemanager = require('./src/queuemanager');
+const queuemanager = require('./queuemanager');
 
 class PlayerReceiver {
 
