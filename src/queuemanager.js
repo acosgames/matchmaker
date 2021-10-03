@@ -37,6 +37,8 @@ class QueueManager {
 
     async onRemoveFromQueue(msg) {
 
+        let shortid = msg.user.id;
+        this.removeFromQueue(shortid);
     }
 
     removeFromQueue(shortid, mode) {
@@ -50,19 +52,23 @@ class QueueManager {
         if (mode) {
             if (player[mode])
                 for (var game_slug in player[mode]) {
-                    let node = player[mode][game_slug];
-                    node.remove();
+                    let queue = player[mode][game_slug];
+                    queue.node.remove();
                 }
         }
         //remove player from all modes
         else {
             for (var m in player) {
                 for (var game_slug in player[m]) {
-                    let node = player[m][game_slug];
-                    node.remove();
+                    let queue = player[m][game_slug];
+                    queue.node.remove();
                 }
             }
         }
+
+        delete this.players[shortid];
+
+        console.log("Removed player " + shortid + " from all queues")
     }
 
     async onAddToQueue(msg) {
