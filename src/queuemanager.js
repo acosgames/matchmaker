@@ -417,13 +417,15 @@ class QueueManager {
                 game_slug,
                 room_slug
             }
-            let exists = await rabbitmq.assertQueue(game_slug);
-            if (!exists) {
-                await rabbitmq.publishQueue('loadGame', msg)
-            }
+            let key = game_slug + '/' + room_slug;
+            // let exists = await rabbitmq.assertQueue(key);
+            // if (!exists) {
+            await rabbitmq.publishQueue('loadGame', { msg, key, actions })
+            // }
 
             //send the join requests to game server
-            await rabbitmq.publishQueue(game_slug, actions);
+
+            // await rabbitmq.publish('game', key, actions);
         }
         catch (e) {
             console.error(e);
