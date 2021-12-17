@@ -28,20 +28,20 @@ class QueueManager {
         this.count = 0;
 
         events.addAddToQueueListener(this.onAddToQueue.bind(this));
-        events.addRemoveFromQueueListener(this.onRemoveFromQueue.bind(this));
+        events.addLeaveFromQueueListener(this.onLeaveFromQueue.bind(this));
     }
 
     createPlayerQueueMap() {
         return { rank: {}, beta: {}, public: {}, private: {} };
     }
 
-    async onRemoveFromQueue(msg) {
+    async onLeaveFromQueue(msg) {
 
         let shortid = msg.user.id;
-        this.removeFromQueue(shortid);
+        this.leaveFromQueue(shortid);
     }
 
-    removeFromQueue(shortid, mode) {
+    leaveFromQueue(shortid, mode) {
 
         let player = this.players[shortid];
         if (!player) {

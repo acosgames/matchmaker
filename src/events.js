@@ -15,12 +15,12 @@ class Events {
         emitter.emit('onJoinQueue', payload);
     }
 
-    addRemoveFromQueueListener(func) {
-        emitter.on('onRemoveQueue', func);
+    addLeaveFromQueueListener(func) {
+        emitter.on('onLeaveQueue', func);
     }
 
-    emitRemoveFromQueue(payload) {
-        emitter.emit('onRemoveQueue', payload);
+    emitLeaveFromQueue(payload) {
+        emitter.emit('onLeaveQueue', payload);
     }
 
 }

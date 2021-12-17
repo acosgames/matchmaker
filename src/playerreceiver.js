@@ -22,7 +22,7 @@ class PlayerReceiver {
             }
 
             await rabbitmq.subscribeQueue('joinQueue', this.onJoinQueue.bind(this));
-            await rabbitmq.subscribeQueue('removeQueue', this.onRemoveQueue.bind(this));
+            await rabbitmq.subscribeQueue('leaveQueue', this.onLeaveQueue.bind(this));
             rs(true);
         })
     }
@@ -30,8 +30,8 @@ class PlayerReceiver {
     async onJoinQueue(msg) {
         events.emitAddToQueue(msg);
     }
-    async onRemoveQueue(msg) {
-        events.emitRemoveFromQueue(msg);
+    async onLeaveQueue(msg) {
+        events.emitLeaveFromQueue(msg);
     }
 }
 
