@@ -32,7 +32,7 @@ class QueueManager {
     }
 
     createPlayerQueueMap() {
-        return { rank: {}, beta: {}, public: {}, private: {} };
+        return { rank: {}, experimental: {}, public: {}, private: {} };
     }
 
     async onLeaveFromQueue(msg) {
