@@ -2,7 +2,7 @@
 // const wm = new WorkerManager();
 
 const axios = require('axios');
-const credutil = require('fsg-shared/util/credentials');
+const credutil = require('shared/util/credentials');
 
 const playerreceiver = require('./src/playerreceiver');
 
@@ -13,7 +13,7 @@ axios.interceptors.response.use(
     },
     error => {
         if (!error.response) {
-            console.log("Waiting on fsg-api to be online...");
+            console.log("Waiting on api to be online...");
         }
 
         return Promise.reject(error)

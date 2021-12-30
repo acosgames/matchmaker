@@ -1,6 +1,6 @@
-const rabbitmq = require('fsg-shared/services/rabbitmq');
-const redis = require('fsg-shared/services/redis');
-const profiler = require('fsg-shared/util/profiler');
+const rabbitmq = require('shared/services/rabbitmq');
+const redis = require('shared/services/redis');
+const profiler = require('shared/util/profiler');
 const events = require('./events');
 const queuemanager = require('./queuemanager');
 

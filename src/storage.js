@@ -1,6 +1,6 @@
 
-const cache = require('fsg-shared/services/cache');
-const room = require('fsg-shared/services/room');
+const cache = require('shared/services/cache');
+const room = require('shared/services/room');
 
 class Storage {
 

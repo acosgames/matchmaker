@@ -1,14 +1,14 @@
-const rabbitmq = require('fsg-shared/services/rabbitmq');
-const redis = require('fsg-shared/services/redis');
-const room = require('fsg-shared/services/room');
+const rabbitmq = require('shared/services/rabbitmq');
+const redis = require('shared/services/redis');
+const room = require('shared/services/room');
 
-const profiler = require('fsg-shared/util/profiler');
-const credutil = require('fsg-shared/util/credentials');
+const profiler = require('shared/util/profiler');
+const credutil = require('shared/util/credentials');
 const events = require('./events');
 const storage = require('./storage');
 const axios = require('axios');
 
-const { genShortId } = require('fsg-shared/util/idgen');
+const { genShortId } = require('shared/util/idgen');
 
 
 const yallist = require('./yallist');
