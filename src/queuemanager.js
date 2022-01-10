@@ -353,6 +353,8 @@ class QueueManager {
         for (let i = 0; i < lobby.length; i++) {
             let node = lobby[i];
             let shortid = node.val();
+            if (!this.players[shortid])
+                return;
             let playerQueue = this.players[shortid][mode][gameinfo.game_slug];
 
             console.log("#" + this.count + "[" + genShortId(5) + "] Player '" + shortid + "' joining " + gameinfo.game_slug, playerQueue.rating || 0, this.processed[shortid] ? 'duplicate' : '', this.attempts[attemptKey]);
