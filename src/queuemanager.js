@@ -278,7 +278,7 @@ class QueueManager {
         let delta = modeData.delta || 50;
         let threshold = modeData.threshold || 200;
         let offset = threshold + (delta * depth);
-        let maxLobbies = (4000 / offset) + 1;
+        let maxLobbies = (5000 / offset) + 1;
         for (let i = 0; i < maxLobbies; i++) {
             lobbies.push([]);
         }
