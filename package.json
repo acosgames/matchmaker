@@ -21,6 +21,7 @@
   "dependencies": {
     "axios": "^0.21.4",
     "shared": "file:../shared",
+    "web-push": "^3.4.5",
     "yallist": "^4.0.0"
   }
 }

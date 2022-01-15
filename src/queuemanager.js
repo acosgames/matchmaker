@@ -1,12 +1,20 @@
 const rabbitmq = require('shared/services/rabbitmq');
 const redis = require('shared/services/redis');
-const room = require('shared/services/room');
+const rooms = require('shared/services/room');
 
 const profiler = require('shared/util/profiler');
 const credutil = require('shared/util/credentials');
+const credentials = credutil();
+
 const events = require('./events');
 const storage = require('./storage');
 const axios = require('axios');
+
+const webpush = require('web-push');
+
+webpush.setVapidDetails(credentials.webpush.contact, credentials.webpush.publickey, credentials.webpush.privatekey)
+
+
 
 const { genShortId } = require('shared/util/idgen');
 
@@ -111,9 +119,10 @@ class QueueManager {
 
 
 
+
         //mark that player is in queue already
         if (mode == 'rank') {
-            let rating = await room.findPlayerRating(shortid, game_slug);
+            let rating = await rooms.findPlayerRating(shortid, game_slug);
             let node = list.push(shortid);
             playerQueues[mode][game_slug] = { rating: rating.rating, node };
         }
@@ -132,7 +141,7 @@ class QueueManager {
     }
 
     async retryMatchPlayers(mode, game_slug, skipTimer) {
-        let modeId = await room.getGameModeID(mode);
+        let modeId = await rooms.getGameModeID(mode);
         let modeInfos = await storage.getModes();
         let modeInfo = modeInfos[modeId];
         let modeData = modeInfo.data || {};
@@ -261,7 +270,7 @@ class QueueManager {
         }
 
         let modeInfos = await storage.getModes();
-        let modeId = await room.getGameModeID(mode);
+        let modeId = await rooms.getGameModeID(mode);
         let modeInfo = modeInfos[modeId];
         let modeData = modeInfo.data || {};
 
@@ -344,9 +353,12 @@ class QueueManager {
         let shortid = lobby[0].val();
         let playerQueue = this.players[shortid][mode][gameinfo.game_slug];
         let room = await this.createRoom(gameinfo.game_slug, mode, shortid, playerQueue.rating || 0);
+        let room_slug = room.room_slug;
 
         let attemptKey = mode + " " + gameinfo.game_slug;
         let actions = [];
+
+
 
         //loop through lobby to cleanup the player from queues data 
         // and join them to the newly created room
@@ -363,10 +375,13 @@ class QueueManager {
 
             this.cleanupPlayer(shortid, node, mode);
 
+            await rooms.assignPlayerRoom(shortid, room_slug, gameinfo.game_slug);
+
             //prepare the join messages to gameserver
             let id = shortid;
             let name = this.playerNames[shortid];
-            let room_slug = room.room_slug;
+
+
             let msg = {
                 type: 'join',
                 user: { id, name },
@@ -374,6 +389,36 @@ class QueueManager {
             }
             actions.push(msg);
         }
+
+        try {
+            //{"body":"Tic Tac Toe", "title":"You joined a game!", "icon": "https://cdn.acos.games/file/acospub/g/test-game-1/preview/QCH6JB.png"}
+            let subscriptions = await rooms.findRoomUserSubscriptions(room_slug);
+            if (subscriptions) {
+
+                let urlprefix = credentials.platform.website.url;
+
+                const payload = JSON.stringify({
+                    title: 'You joined a game!',
+                    body: `${gameinfo.name}, click to join.`,
+                    icon: `https://cdn.acos.games/file/acospub/g/${gameinfo.game_slug}/preview/${gameinfo.preview_images}`,
+                    data: {
+                        url: `${urlprefix}/g/${gameinfo.game_slug}/${room.room_slug}`
+                    }
+                })
+
+                for (var i = 0; i < subscriptions.length; i++) {
+                    let sub = subscriptions[i];
+                    let subscription = JSON.parse(sub.webpush);
+                    webpush.sendNotification(subscription, payload)
+                        .then(result => console.log(result))
+                        .catch(e => console.log(e.stack))
+                }
+            }
+        }
+        catch (e) {
+            console.error(e);
+        }
+
 
         await this.sendJoinRequest(gameinfo.game_slug, room.room_slug, actions)
     }
@@ -407,7 +452,7 @@ class QueueManager {
         if (mode != 'rank')
             rating = 0;
 
-        let roomMeta = await room.createRoom(shortid, rating, game_slug, mode);
+        let roomMeta = await rooms.createRoom(shortid, rating, game_slug, mode);
         return roomMeta;
     }
 
