@@ -409,9 +409,15 @@ class QueueManager {
                 for (var i = 0; i < subscriptions.length; i++) {
                     let sub = subscriptions[i];
                     let subscription = JSON.parse(sub.webpush);
-                    webpush.sendNotification(subscription, payload)
-                        .then(result => console.log(result))
-                        .catch(e => console.log(e.stack))
+                    try {
+                        webpush.sendNotification(subscription, payload)
+                            .then(result => console.log(result))
+                            .catch(e => console.log(e.stack))
+                    }
+                    catch (e) {
+                        console.error(e);
+                    }
+
                 }
             }
         }
