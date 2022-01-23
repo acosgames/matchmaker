@@ -91,7 +91,7 @@ class QueueManager {
         this.playerNames[shortid] = msg.user.name;
 
         //check if player needs to be created
-        let playerQueues = this.players[shortid];
+        var playerQueues = this.players[shortid];
         if (!playerQueues) {
             playerQueues = this.createPlayerQueueMap();
             this.players[shortid] = playerQueues;
@@ -99,6 +99,7 @@ class QueueManager {
         else {
             let playerQueue = playerQueues[mode][game_slug];
             if (playerQueue) {
+                console.log("ALREADY IN QUEUE: ", JSON.stringify(playerQueue));
                 return; //already in queue
             }
         }
