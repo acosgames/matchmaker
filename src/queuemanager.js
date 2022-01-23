@@ -93,10 +93,12 @@ class QueueManager {
         //check if player needs to be created
         var playerQueues = this.players[shortid];
         if (!playerQueues) {
+            console.log("creating new playerQueues", shortid);
             playerQueues = this.createPlayerQueueMap();
             this.players[shortid] = playerQueues;
         }
         else {
+            console.log("player queue exists: ", shortid, mode, game_slug);
             let playerQueue = playerQueues[mode][game_slug];
             if (playerQueue) {
                 console.log("ALREADY IN QUEUE: ", JSON.stringify(playerQueue));
@@ -107,6 +109,7 @@ class QueueManager {
         //check if mode exist
         let list = this.queues[mode];
         if (!list) {
+            console.log("Queue for mode does not exist: ", mode);
             this.queues[mode] = {};
         }
 
@@ -114,6 +117,7 @@ class QueueManager {
         //add user to list
         list = this.queues[mode][game_slug];
         if (!list) {
+            console.log("Creating queue list: ", mode, game_slug);
             list = yallist.create();
             this.queues[mode][game_slug] = list;
         }
@@ -124,10 +128,12 @@ class QueueManager {
         //mark that player is in queue already
         if (mode == 'rank') {
             let rating = await rooms.findPlayerRating(shortid, game_slug);
+            console.log("[RANK] Found player rating: ", rating);
             let node = list.push(shortid);
             playerQueues[mode][game_slug] = { rating: rating.rating, node };
         }
         else {
+            console.log("[" + mode + "] adding user to queue: ", shortid, mode, game_slug);
             let node = list.push(shortid);
             playerQueues[mode][game_slug] = { node };
         }
@@ -193,6 +199,7 @@ class QueueManager {
 
     getPlayerQueue(shortid, mode, game_slug) {
         try {
+            console.log("getPlayerQueue", shortid, mode, game_slug);
             let playerQueue = this.players[shortid][mode][game_slug];
             return playerQueue;
         }
@@ -268,6 +275,7 @@ class QueueManager {
 
         //single player game, join them immediately
         if (max == 1) {
+            console.log("Single player game: creat game and join players", game_slug, mode);
             await this.createGameAndJoinPlayers(gameinfo, mode, [cur]);
             return true;
         }
@@ -299,7 +307,7 @@ class QueueManager {
         list.forEach((v, i, list, node) => {
             let playerA = this.getPlayerQueue(v, mode, game_slug);
             let lobbyId = parseInt(Math.ceil(playerA.rating / offset));
-            // console.log("[" + v + "] = ", lobbyId, playerA.rating)
+            console.log("[" + v + "] = ", lobbyId, playerA.rating)
             lobbies[lobbyId].push(node);
         })
 
@@ -310,10 +318,12 @@ class QueueManager {
             for (let j = 0; j < lobby.length; j++) {
                 group.push(lobby[j]);
                 if (group.length == max) {
+                    console.log("group.length == max: creat game and join players", game_slug, mode);
                     await this.createGameAndJoinPlayers(gameinfo, mode, group);
                     group = [];
                 }
                 else if (lobby.length < max && group.length >= min && this.attempts[attemptKey] % 10 == 0) {
+                    console.log("lobby.length < max: creat game and join players", game_slug, mode);
                     await this.createGameAndJoinPlayers(gameinfo, mode, group);
                     group = [];
                 }
@@ -325,6 +335,7 @@ class QueueManager {
 
         //no more players, cleanup this queue
         if (list.size() == 0) {
+            console.log("List size == 0, cleanup queue", game_slug, mode);
             let attemptKey = mode + " " + game_slug;
             delete this.attempts[attemptKey];
             delete this.queues[mode][game_slug];
@@ -378,7 +389,7 @@ class QueueManager {
 
             this.cleanupPlayer(shortid, node, mode);
 
-            await rooms.assignPlayerRoom(shortid, room_slug, gameinfo.game_slug);
+
 
             //prepare the join messages to gameserver
             let id = shortid;
@@ -436,25 +447,35 @@ class QueueManager {
 
     cleanupPlayer(shortid, node, mode) {
         //cleanup the processed node
-        node.remove();
+        // node.remove();
 
-        //cleanup the queue we just processed, so user isn't added to other games
-        this.players[shortid][mode] = {};
+        // //cleanup the queue we just processed, so user isn't added to other games
+        // this.players[shortid][mode] = {};
 
         //cleanup the player queue info
-        let isEmpty = true;
-        for (var m in this.players[shortid]) {
-            let playermode = this.players[shortid][m];
-            let keys = Object.keys(playermode);
-            if (keys.length > 0) {
-                isEmpty = false;
+        // let isEmpty = true;
+        // for (var m in this.players[shortid]) {
+        //     let playermode = this.players[shortid][m];
+        //     let keys = Object.keys(playermode);
+        //     if (keys.length > 0) {
+        //         isEmpty = false;
+        //     }
+        // }
+
+        console.log("cleanupPlayer removing queues: ", shortid);
+        let player = this.players[shortid]
+
+        for (var m in player) {
+            for (var game_slug in player[m]) {
+                let queue = player[m][game_slug];
+                queue.node.remove();
             }
         }
 
         //if player has no queues, delete them to save memory
-        if (isEmpty) {
-            delete this.players[shortid];
-        }
+        // if (isEmpty) {
+        delete this.players[shortid];
+        // }
     }
 
     async createRoom(game_slug, mode, shortid, rating) {
