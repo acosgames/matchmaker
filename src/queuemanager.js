@@ -228,7 +228,9 @@ class QueueManager {
         list.forEach((v, i, list, node) => {
             lobby.push(node);
             if (lobby.length == max ||
-                (lobby.length < max && lobby.length >= min && this.attempts[attemptKey] % 5 == 0)) {
+                (lobby.length < max &&
+                    lobby.length >= min &&
+                    (this.attempts[attemptKey] % 5 == 0))) {
                 lobbies.push(lobby);
                 lobby = [];
             }
