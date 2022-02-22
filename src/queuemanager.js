@@ -80,13 +80,20 @@ class QueueManager {
     }
 
     async onAddToQueue(msg) {
-        await this.addToQueue(msg);
-    }
-    async addToQueue(msg) {
 
-        let game_slug = msg.game_slug;
+        let queues = msg.queues || [];
+        for (var i = 0; i < queues.length; i++) {
+            let queue = queues[i];
+            let game_slug = queue.game_slug;
+            let mode = queue.mode;
+
+            this.addToQueue(msg, game_slug, mode);
+        }
+
+    }
+    async addToQueue(msg, game_slug, mode) {
+
         let shortid = msg.user.id;
-        let mode = msg.mode;
 
         this.playerNames[shortid] = msg.user.name;
 
@@ -101,7 +108,7 @@ class QueueManager {
             console.log("player queue exists: ", shortid, mode, game_slug);
             let playerQueue = playerQueues[mode][game_slug];
             if (playerQueue) {
-                console.log("ALREADY IN QUEUE: ", JSON.stringify(playerQueue));
+                console.log("ALREADY IN QUEUE: ", shortid, game_slug, mode);
                 return; //already in queue
             }
         }
