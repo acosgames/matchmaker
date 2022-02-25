@@ -82,6 +82,7 @@ class QueueManager {
 
     async onAddToQueue(msg) {
 
+        console.log("onAddToQueue", JSON.stringify(msg, null, 2));
         let queues = msg.queues || [];
         for (var i = 0; i < queues.length; i++) {
             let queue = queues[i];
