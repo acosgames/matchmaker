@@ -430,7 +430,7 @@ class QueueManager {
             this.processed[shortid] = true;
             this.count++;
 
-            this.leaveFromQueue(shortid);
+
             // this.cleanupPlayer(shortid, node, mode);
 
 
@@ -439,7 +439,7 @@ class QueueManager {
             let id = shortid;
             let name = this.playerNames[shortid];
 
-            delete this.playerNames[shortid];
+            // delete this.playerNames[shortid];
 
             let msg = {
                 type: 'join',
@@ -447,6 +447,8 @@ class QueueManager {
                 room_slug
             }
             actions.push(msg);
+
+            this.leaveFromQueue(shortid);
         }
 
         try {
