@@ -75,6 +75,7 @@ class QueueManager {
         }
 
         delete this.players[shortid];
+        delete this.playerNames[shortid];
 
         console.log("Removed player " + shortid + " from all queues")
     }
@@ -87,43 +88,54 @@ class QueueManager {
             let game_slug = queue.game_slug;
             let mode = queue.mode;
 
-            this.addToQueue(msg, game_slug, mode);
+            this.addToQueue(msg.user.id, msg.user.name, game_slug, mode);
         }
 
     }
-    async addToQueue(msg, game_slug, mode) {
+    async addToQueue(shortid, username, game_slug, mode) {
 
-        let shortid = msg.user.id;
+        // let shortid = msg.user.id;
 
-        this.playerNames[shortid] = msg.user.name;
+        this.playerNames[shortid] = username;// msg.user.name;
 
         //check if player needs to be created
         var playerQueues = this.players[shortid];
-        if (!playerQueues || !playerQueues[mode] || !playerQueues[mode][game_slug]) {
-            console.log("creating new playerQueues", shortid);
-            let queuemap = this.createPlayerQueueMap();
-            playerQueues = Object.assign({}, queuemap, playerQueues);
-            this.players[shortid] = playerQueues;
+        if (!playerQueues) {
+            playerQueues = this.createPlayerQueueMap();
         }
 
-        console.log("player queue exists: ", shortid, mode, game_slug);
-        let playerQueue = playerQueues[mode][game_slug];
-        if (playerQueue) {
-            console.log("ALREADY IN QUEUE: ", shortid, game_slug, mode);
-            return; //already in queue
+        if (!playerQueues[mode]) {
+            playerQueues[mode] = {};
         }
+
+        // console.log("creating new playerQueues", shortid);
+        // if(!playerQueues[mode][game_slug]) {
+        //     this.players[shortid] = playerQueues;
+        // }
+
+        if (playerQueues[mode][game_slug]) {
+            console.log("ALREADY IN QUEUE: ", shortid, game_slug, mode);
+            return;
+        }
+
+        // console.log("player queue exists: ", shortid, mode, game_slug);
+        // let playerQueue = playerQueues[mode][game_slug];
+        // if (playerQueue) {
+        //     console.log("ALREADY IN QUEUE: ", shortid, game_slug, mode);
+        //     return; //already in queue
+        // }
 
 
         //check if mode exist
-        let list = this.queues[mode];
-        if (!list) {
+        let queuesMode = this.queues[mode];
+        if (!queuesMode) {
             console.log("Queue for mode does not exist: ", mode);
             this.queues[mode] = {};
         }
 
         //check if game exist in mode
         //add user to list
-        list = this.queues[mode][game_slug];
+        let list = this.queues[mode][game_slug];
         if (!list) {
             console.log("Creating queue list: ", mode, game_slug);
             list = yallist.create();
@@ -148,7 +160,7 @@ class QueueManager {
 
         //let result = this.matchPlayers(mode, game_slug);
 
-
+        this.players[shortid] = playerQueues;
 
         await this.retryMatchPlayers(mode, game_slug, true);
 
@@ -208,8 +220,17 @@ class QueueManager {
     getPlayerQueue(shortid, mode, game_slug) {
         try {
             console.log("getPlayerQueue", shortid, mode, game_slug);
-            let playerQueue = this.players[shortid][mode][game_slug];
-            return playerQueue;
+            if (!this.players)
+                return null;
+            if (!this.players[shortid])
+                return null;
+
+            if (!this.players[shortid][mode])
+                return null;
+            if (!this.players[shortid][mode][game_slug])
+                return null;
+
+            return this.players[shortid][mode][game_slug];
         }
         catch (e) {
             console.error(e);
@@ -312,12 +333,24 @@ class QueueManager {
         }
 
         //move each player into one of the lobbies by their ranking
-        list.forEach((v, i, list, node) => {
+        let invalidPlayers = [];
+        list.forEach((v, i, lst, node) => {
             let playerA = this.getPlayerQueue(v, mode, game_slug);
+            if (!playerA) {
+                node.remove();
+                invalidPlayers.push(v);
+                return;
+            }
             let lobbyId = parseInt(Math.ceil(playerA.rating / offset));
             console.log("[" + v + "] = ", lobbyId, playerA.rating)
             lobbies[lobbyId].push(node);
         })
+
+        for (var i = 0; i < invalidPlayers.length; i++) {
+            let shortid = invalidPlayers[i];
+            let username = this.playerNames[shortid];
+            this.addToQueue(shortid, username, game_slug, mode);
+        }
 
         //for each lobby, check if we can create a game
         for (let i = 0; i < lobbies.length; i++) {
