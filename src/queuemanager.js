@@ -337,6 +337,7 @@ class QueueManager {
         list.forEach((v, i, lst, node) => {
             let playerA = this.getPlayerQueue(v, mode, game_slug);
             if (!playerA) {
+                console.error("Invalid player found: ", v, mode, game_slug);
                 node.remove();
                 invalidPlayers.push(v);
                 return;
