@@ -99,19 +99,20 @@ class QueueManager {
 
         //check if player needs to be created
         var playerQueues = this.players[shortid];
-        if (!playerQueues) {
+        if (!playerQueues || !playerQueues[mode] || !playerQueues[mode][game_slug]) {
             console.log("creating new playerQueues", shortid);
-            playerQueues = this.createPlayerQueueMap();
+            let queuemap = this.createPlayerQueueMap();
+            playerQueues = Object.assign({}, queuemap, playerQueues);
             this.players[shortid] = playerQueues;
         }
-        else {
-            console.log("player queue exists: ", shortid, mode, game_slug);
-            let playerQueue = playerQueues[mode][game_slug];
-            if (playerQueue) {
-                console.log("ALREADY IN QUEUE: ", shortid, game_slug, mode);
-                return; //already in queue
-            }
+
+        console.log("player queue exists: ", shortid, mode, game_slug);
+        let playerQueue = playerQueues[mode][game_slug];
+        if (playerQueue) {
+            console.log("ALREADY IN QUEUE: ", shortid, game_slug, mode);
+            return; //already in queue
         }
+
 
         //check if mode exist
         let list = this.queues[mode];
