@@ -416,7 +416,7 @@ class QueueManager {
         let actions = [];
 
 
-
+        let shortids = [];
         //loop through lobby to cleanup the player from queues data 
         // and join them to the newly created room
         for (let i = 0; i < lobby.length; i++) {
@@ -449,50 +449,24 @@ class QueueManager {
             actions.push(msg);
 
             this.leaveFromQueue(shortid);
+
+            shortids.push(shortid);
+
+
         }
 
-        try {
-            //{"body":"Tic Tac Toe", "title":"You joined a game!", "icon": "https://cdn.acos.games/file/acospub/g/test-game-1/preview/QCH6JB.png"}
-            let subscriptions = await rooms.findRoomUserSubscriptions(room_slug);
-            console.log("Room Notif Subscriptions: ", room_slug, subscriptions);
-            if (subscriptions) {
+        await this.sendJoinRequest(gameinfo.game_slug, room_slug, actions)
 
-                let urlprefix = credentials.platform.website.url;
-
-                const payload = JSON.stringify({
-                    title: 'You joined a game!',
-                    body: `${gameinfo.name}, click to join.`,
-                    icon: `https://cdn.acos.games/file/acospub/g/${gameinfo.game_slug}/preview/${gameinfo.preview_images}`,
-                    data: {
-                        url: `${urlprefix}/g/${gameinfo.game_slug}/${room.room_slug}`
-                    }
-                })
-
-                for (var i = 0; i < subscriptions.length; i++) {
-                    let sub = subscriptions[i];
-                    let subscription = JSON.parse(sub.webpush);
-                    try {
-                        console.log("Sending Notification: ", sub.shortid, payload);
-                        webpush.sendNotification(subscription, payload)
-                            .then(result => console.log(result))
-                            .catch(e => console.error(e))
-                    }
-                    catch (e) {
-                        console.error(e);
-                    }
-
-                }
-            }
-        }
-        catch (e) {
-            console.error(e);
-        }
-
-
-        await this.sendJoinRequest(gameinfo.game_slug, room.room_slug, actions)
+        await this.assignAndNotify(shortids, room_slug, gameinfo);
     }
 
-
+    async assignAndNotify(shortids, room_slug, gameinfo) {
+        for (var i = 0; i < shortids.length; i++) {
+            let shortid = shortids[i];
+            await rooms.assignPlayerRoom(shortid, room_slug, gameinfo.game_slug);
+        }
+        await rooms.notifyPlayerRoom(room_slug, gameinfo);
+    }
 
     cleanupPlayer(shortid, node, mode) {
         //cleanup the processed node
@@ -548,6 +522,7 @@ class QueueManager {
             // if (!exists) {
             await rabbitmq.publishQueue('loadGame', { msg, key, actions })
             // }
+
 
             //send the join requests to game server
 
