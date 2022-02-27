@@ -462,6 +462,7 @@ class QueueManager {
     }
 
     async assignAndNotify(shortids, room_slug, gameinfo) {
+        console.log("Assign and Notify: ", shortids, room_slug);
         for (var i = 0; i < shortids.length; i++) {
             let shortid = shortids[i];
             await rooms.assignPlayerRoom(shortid, room_slug, gameinfo.game_slug);
