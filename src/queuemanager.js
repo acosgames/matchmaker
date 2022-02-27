@@ -439,6 +439,7 @@ class QueueManager {
             let id = shortid;
             let name = this.playerNames[shortid];
 
+            shortids.push(shortid);
             // delete this.playerNames[shortid];
 
             let msg = {
@@ -450,7 +451,7 @@ class QueueManager {
 
             this.leaveFromQueue(shortid);
 
-            shortids.push(shortid);
+
 
 
         }
