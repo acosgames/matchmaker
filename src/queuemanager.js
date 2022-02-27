@@ -454,6 +454,7 @@ class QueueManager {
         try {
             //{"body":"Tic Tac Toe", "title":"You joined a game!", "icon": "https://cdn.acos.games/file/acospub/g/test-game-1/preview/QCH6JB.png"}
             let subscriptions = await rooms.findRoomUserSubscriptions(room_slug);
+            console.log("Room Notif Subscriptions: ", room_slug, subscriptions);
             if (subscriptions) {
 
                 let urlprefix = credentials.platform.website.url;
@@ -471,9 +472,10 @@ class QueueManager {
                     let sub = subscriptions[i];
                     let subscription = JSON.parse(sub.webpush);
                     try {
+                        console.log("Sending Notification: ", sub.shortid, payload);
                         webpush.sendNotification(subscription, payload)
                             .then(result => console.log(result))
-                            .catch(e => console.log(e.stack))
+                            .catch(e => console.error(e))
                     }
                     catch (e) {
                         console.error(e);
