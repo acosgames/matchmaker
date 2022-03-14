@@ -21,11 +21,17 @@ class PlayerReceiver {
                 await this.sleep(1000);
             }
 
+
+            await queuemanager.loadQueues();
+
+
             await rabbitmq.subscribeQueue('joinQueue', this.onJoinQueue.bind(this));
             await rabbitmq.subscribeQueue('leaveQueue', this.onLeaveQueue.bind(this));
             rs(true);
         })
     }
+
+
 
     async onJoinQueue(msg) {
         events.emitAddToQueue(msg);

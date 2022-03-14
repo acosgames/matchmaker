@@ -39,6 +39,30 @@ class QueueManager {
         events.addLeaveFromQueueListener(this.onLeaveFromQueue.bind(this));
     }
 
+    async loadQueues() {
+
+        let queuePlayers = await redis.hgetall('queuePlayers');
+        let queueExists = await redis.hgetall('queueExists');
+
+        for (var q in queueExists) {
+            let parts = q.split('/');
+            let mode = parts[0];
+            let game_slug = parts[1];
+
+            let queueList = await redis.smembers('queues/' + q);
+            let shortid;
+            let username;
+            for (var i = 0; i < queueList.length; i++) {
+                shortid = queueList[i];
+                username = queuePlayers[shortid];
+                this.addToQueue(shortid, username, game_slug, mode, true);
+            }
+            console.log(queueList);
+            // this.addToQueue()
+        }
+        console.log(queuePlayers);
+    }
+
     createPlayerQueueMap() {
         return { rank: {}, experimental: {}, public: {}, private: {} };
     }
@@ -61,7 +85,20 @@ class QueueManager {
             if (player[mode])
                 for (var game_slug in player[mode]) {
                     let queue = player[mode][game_slug];
+                    try {
+                        redis.srem('queues/' + mode + '/' + game_slug, shortid);
+                        if (queue.node.list.size() == 1) {
+                            redis.hdel('queueExists', mode + '/' + game_slug);
+                            redis.hset('queueCount', game_slug, 0);
+                        }
+                    }
+                    catch (e) {
+
+                    }
+
                     queue.node.remove();
+
+
                 }
         }
         //remove player from all modes
@@ -69,6 +106,19 @@ class QueueManager {
             for (var m in player) {
                 for (var game_slug in player[m]) {
                     let queue = player[m][game_slug];
+
+                    try {
+                        redis.srem('queues/' + m + '/' + game_slug, shortid);
+                        if (queue.node.list.size() == 1) {
+                            redis.hdel('queueExists', m + '/' + game_slug);
+                            redis.hset('queueCount', game_slug, 0);
+                        }
+                    }
+                    catch (e) {
+                        console.error(e);
+                    }
+
+
                     queue.node.remove();
                 }
             }
@@ -76,6 +126,14 @@ class QueueManager {
 
         delete this.players[shortid];
         delete this.playerNames[shortid];
+
+        try {
+            redis.hdel('queuePlayers', shortid);
+        }
+        catch (e) {
+            console.error(e);
+        }
+
 
         console.log("Removed player " + shortid + " from all queues")
     }
@@ -93,7 +151,7 @@ class QueueManager {
         }
 
     }
-    async addToQueue(shortid, username, game_slug, mode) {
+    async addToQueue(shortid, username, game_slug, mode, skipRedis) {
 
         // let shortid = msg.user.id;
 
@@ -126,6 +184,16 @@ class QueueManager {
         //     return; //already in queue
         // }
 
+        try {
+            if (!skipRedis)
+                redis.hset('queuePlayers', shortid, username);
+        }
+        catch (e) {
+            console.error(e);
+        }
+
+
+
 
         //check if mode exist
         let queuesMode = this.queues[mode];
@@ -141,8 +209,26 @@ class QueueManager {
             console.log("Creating queue list: ", mode, game_slug);
             list = yallist.create();
             this.queues[mode][game_slug] = list;
+            try {
+                if (!skipRedis) {
+                    redis.hset('queueExists', mode + '/' + game_slug, true);
+
+                }
+            }
+            catch (e) {
+                console.error(e);
+            }
+
         }
 
+        try {
+            if (!skipRedis) {
+                redis.sadd('queues/' + mode + '/' + game_slug, shortid);
+            }
+        }
+        catch (e) {
+            console.error(e);
+        }
 
 
 
@@ -160,6 +246,16 @@ class QueueManager {
         }
 
         //let result = this.matchPlayers(mode, game_slug);
+
+        try {
+            if (!skipRedis) {
+                redis.hset('queueCount', game_slug, list.size());
+            }
+        }
+        catch (e) {
+            console.error(e);
+        }
+
 
         this.players[shortid] = playerQueues;
 
@@ -487,19 +583,20 @@ class QueueManager {
         //     }
         // }
 
-        console.log("cleanupPlayer removing queues: ", shortid);
-        let player = this.players[shortid]
+        this.leaveFromQueue(shortid);
+        // console.log("cleanupPlayer removing queues: ", shortid);
+        // let player = this.players[shortid]
 
-        for (var m in player) {
-            for (var game_slug in player[m]) {
-                let queue = player[m][game_slug];
-                queue.node.remove();
-            }
-        }
+        // for (var m in player) {
+        //     for (var game_slug in player[m]) {
+        //         let queue = player[m][game_slug];
+        //         queue.node.remove();
+        //     }
+        // }
 
-        //if player has no queues, delete them to save memory
-        // if (isEmpty) {
-        delete this.players[shortid];
+        // //if player has no queues, delete them to save memory
+        // // if (isEmpty) {
+        // delete this.players[shortid];
         // }
     }
 
