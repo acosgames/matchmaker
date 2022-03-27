@@ -1,6 +1,7 @@
 const rabbitmq = require('shared/services/rabbitmq');
 const redis = require('shared/services/redis');
 const rooms = require('shared/services/room');
+const person = require('shared/services/person');
 
 const profiler = require('shared/util/profiler');
 const credutil = require('shared/util/credentials');
@@ -41,26 +42,32 @@ class QueueManager {
 
     async loadQueues() {
 
-        let queuePlayers = await redis.hgetall('queuePlayers');
-        let queueExists = await redis.hgetall('queueExists');
+        try {
+            let queuePlayers = await redis.hgetall('queuePlayers');
+            let queueExists = await redis.hgetall('queueExists');
 
-        for (var q in queueExists) {
-            let parts = q.split('/');
-            let mode = parts[0];
-            let game_slug = parts[1];
+            for (var q in queueExists) {
+                let parts = q.split('/');
+                let mode = parts[0];
+                let game_slug = parts[1];
 
-            let queueList = await redis.smembers('queues/' + q);
-            let shortid;
-            let username;
-            for (var i = 0; i < queueList.length; i++) {
-                shortid = queueList[i];
-                username = queuePlayers[shortid];
-                this.addToQueue(shortid, username, game_slug, mode, true);
+                let queueList = await redis.smembers('queues/' + q);
+                let shortid;
+                let username;
+                for (var i = 0; i < queueList.length; i++) {
+                    shortid = queueList[i];
+                    username = queuePlayers[shortid];
+                    this.addToQueue(shortid, username, game_slug, mode, true);
+                }
+                console.log(queueList);
+                // this.addToQueue()
             }
-            console.log(queueList);
-            // this.addToQueue()
+            console.log(queuePlayers);
         }
-        console.log(queuePlayers);
+        catch (e) {
+            console.error(e);
+        }
+
     }
 
     createPlayerQueueMap() {
@@ -142,6 +149,25 @@ class QueueManager {
 
         console.log("onAddToQueue", JSON.stringify(msg, null, 2));
         let queues = msg.queues || [];
+
+
+        if (!msg.user || !msg.user.id)
+            return false;
+
+        if (!msg.user.name) {
+            try {
+                let userinfo = await person.findUser({ shortid: msg.user.id }, true);
+                if (!userinfo)
+                    throw "E_USERNOTFOUND";
+
+                msg.user.name = userinfo.diplayname;
+            }
+            catch (e) {
+                console.error("ERROR: Cannot find user");
+                console.error(e);
+            }
+        }
+
         for (var i = 0; i < queues.length; i++) {
             let queue = queues[i];
             let game_slug = queue.game_slug;
@@ -154,6 +180,7 @@ class QueueManager {
     async addToQueue(shortid, username, game_slug, mode, skipRedis) {
 
         // let shortid = msg.user.id;
+
 
         this.playerNames[shortid] = username;// msg.user.name;
 

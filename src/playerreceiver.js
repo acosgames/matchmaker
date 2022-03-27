@@ -16,7 +16,7 @@ class PlayerReceiver {
 
     start() {
         return new Promise(async (rs, rj) => {
-            while (!(rabbitmq.isActive() && redis.isActive)) {
+            while (!rabbitmq.isActive() || !redis.isActive) {
                 console.warn("[MatchMaker] waiting on rabbitmq and redis...");
                 await this.sleep(1000);
             }
