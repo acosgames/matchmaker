@@ -80,7 +80,7 @@ class QueueManager {
         this.leaveFromQueue(shortid);
     }
 
-    leaveFromQueue(shortid, mode) {
+    async leaveFromQueue(shortid, mode) {
 
         let player = this.players[shortid];
         if (!player) {
@@ -120,6 +120,12 @@ class QueueManager {
                             redis.hdel('queueExists', m + '/' + game_slug);
                             redis.hset('queueCount', game_slug, 0);
                         }
+
+                        let gameinfo = await storage.getGameInfo(game_slug);
+                        let username = this.playerNames[shortid];
+                        if (gameinfo) {
+                            await rabbitmq.publishQueue('notifyDiscord', { 'type': 'queue', shortid, username, game_title: (gameinfo?.name || game_slug), game_slug, mode: m, thumbnail: (gameinfo?.preview_images || '') })
+                        }
                     }
                     catch (e) {
                         console.error(e);
@@ -133,6 +139,7 @@ class QueueManager {
 
         delete this.players[shortid];
         delete this.playerNames[shortid];
+
 
         try {
             redis.hdel('queuePlayers', shortid);
@@ -217,6 +224,12 @@ class QueueManager {
         }
         catch (e) {
             console.error(e);
+        }
+
+
+        let gameinfo = await storage.getGameInfo(game_slug);
+        if (gameinfo) {
+            await rabbitmq.publishQueue('notifyDiscord', { 'type': 'queue', shortid, username, game_title: (gameinfo?.name || game_slug), game_slug, mode, thumbnail: (gameinfo?.preview_images || '') })
         }
 
 
@@ -579,7 +592,7 @@ class QueueManager {
 
         }
 
-        await this.sendJoinRequest(gameinfo.game_slug, room_slug, actions)
+        await this.sendJoinRequest(gameinfo.game_slug, room_slug, actions, gameinfo)
 
         await this.assignAndNotify(shortids, room_slug, gameinfo);
     }
@@ -635,7 +648,7 @@ class QueueManager {
         return roomMeta;
     }
 
-    async sendJoinRequest(game_slug, room_slug, actions) {
+    async sendJoinRequest(game_slug, room_slug, actions, gameinfo) {
         try {
 
             //tell our game server to load the game, if one doesn't exist already
@@ -649,6 +662,7 @@ class QueueManager {
             await rabbitmq.publishQueue('loadGame', { msg, key, actions })
             // }
 
+            await rabbitmq.publishQueue('notifyDiscord', { 'type': 'join', actions, game_title: (gameinfo?.name || game_slug), game_slug, room_slug, thumbnail: (gameinfo?.preview_images || '') })
 
             //send the join requests to game server
 
