@@ -228,7 +228,7 @@ class QueueManager {
 
 
         let gameinfo = await storage.getGameInfo(game_slug);
-        if (gameinfo) {
+        if (gameinfo && gameinfo.maxplayers > 1) {
             await rabbitmq.publishQueue('notifyDiscord', { 'type': 'queue', shortid, username, game_title: (gameinfo?.name || game_slug), game_slug, mode, thumbnail: (gameinfo?.preview_images || '') })
         }
 
