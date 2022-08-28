@@ -6,6 +6,30 @@ class Storage {
 
     constructor() {
 
+        this.teams = {};
+    }
+
+    async setTeam(teamid, teaminfo) {
+        this.teams[teamid] = teaminfo;
+        cache.set('team/' + teamid, teaminfo, 2000);
+    }
+
+    async getTeam(teamid) {
+        if (this.teams[teamid]) {
+            return this.teams[teamid];
+        }
+        let teaminfo = await cache.get('team/' + teamid);
+        if (teaminfo) {
+            this.teams[teamid] = teaminfo;
+        }
+        return teaminfo;
+    }
+
+    async deleteTeam(teamid) {
+        if (this.teams[teamid]) {
+            delete this.teams[teamid];
+        }
+        await cache.del('team/' + teamid);
     }
 
     async getRoomMeta(room_slug) {

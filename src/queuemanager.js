@@ -33,9 +33,14 @@ class QueueManager {
         this.playerNames = {};
         this.attempts = {};
 
+
+        this.teams = {};
+
         this.processed = {};
         this.count = 0;
 
+        events.addLeaveFromTeamListener(this.onLeaveFromTeam.bind(this));
+        events.addAddToTeamListener(this.onAddToTeam.bind(this));
         events.addAddToQueueListener(this.onAddToQueue.bind(this));
         events.addLeaveFromQueueListener(this.onLeaveFromQueue.bind(this));
     }
@@ -68,6 +73,74 @@ class QueueManager {
             console.error(e);
         }
 
+    }
+
+    async onAddToTeam(payload) {
+
+        let teamid = payload.teamid;
+        let players = payload.players;
+        let captain = payload.captain;
+
+        if (!players || !Array.isArray(players) || players.length == 0) {
+            return false;
+        }
+
+        if (!teamid) {
+            teamid = genShortId(8)
+        }
+
+        //check if we have existing team
+        let teaminfo = await storage.getTeam(teamid) || { teamid, players, captain };
+
+
+
+        //check which players need to be added
+        let newPlayers = [];
+        if (teaminfo?.players) {
+            for (let shortid in teaminfo.players) {
+                if (!(shortid in players)) {
+                    newPlayers.push({ shortid, displayname: teaminfo.players[shortid] })
+                }
+            }
+        }
+
+        //add the players to the team
+        for (let player of newPlayers) {
+            teaminfo.players[player.shortid] = player.displayname;
+        }
+
+        //update our team roster
+        storage.setTeam(teamid, teaminfo);
+
+        //let users know their team was updated
+        rabbitmq.publish('ws', 'joinedTeam', teams[teamid]);
+    }
+
+    async onLeaveFromTeam(payload) {
+        let teamid = payload.teamid;
+        let shortid = payload.shortid;
+
+        let teaminfo = await storage.getTeam(teamid);
+        if (!teaminfo)
+            return;
+
+        if (teaminfo?.players[shortid]) {
+            delete teaminfo.players[shortid];
+        }
+
+        if (teaminfo?.captain == shortid) {
+            let playerList = Object.keys(teaminfo.players);
+            teaminfo.captain = playerList[Math.floor(Math.random() * playerList.length)]
+        }
+
+        if (teaminfo?.players?.length <= 1) {
+            storage.deleteTeam(teamid);
+        }
+        else {
+            storage.setTeam(teamid, teaminfo);
+        }
+
+        rabbitmq.publish('ws', 'leaveTeam', teaminfo);
     }
 
     createPlayerQueueMap() {
@@ -227,6 +300,7 @@ class QueueManager {
         }
 
 
+        //notify chats that someone has joined a queue
         let gameinfo = await storage.getGameInfo(game_slug);
         if (gameinfo && gameinfo.maxplayers > 1) {
             await rabbitmq.publishQueue('notifyDiscord', { 'type': 'queue', shortid, username, game_title: (gameinfo?.name || game_slug), game_slug, mode, thumbnail: (gameinfo?.preview_images || '') })
