@@ -33,6 +33,7 @@ class QueueManager {
         this.playerNames = {};
         this.attempts = {};
 
+        this.queuedParties = {};
 
         this.teams = {};
 
@@ -149,7 +150,7 @@ class QueueManager {
 
     async onLeaveFromQueue(msg) {
 
-        let shortid = msg.user.id;
+        let shortid = msg.user.shortid;
         this.leaveFromQueue(shortid);
     }
 
@@ -225,158 +226,154 @@ class QueueManager {
         console.log("Removed player " + shortid + " from all queues")
     }
 
-    async onAddToQueue(msg) {
+    /**
+     * Add a team into a queue (team can be 1 person or more)
+     * group.teamid
+     * group.players
+     * group.queues
+     * group.captain
+     * @param {*} group 
+     * @returns 
+     */
 
-        console.log("onAddToQueue", JSON.stringify(msg, null, 2));
-        let queues = msg.queues || [];
+    async onAddToQueue(group) {
 
+        console.log("onAddToQueue", JSON.stringify(group, null, 2));
 
-        if (!msg.user || !msg.user.id)
+        if (!group)
             return false;
 
-        if (!msg.user.name) {
-            try {
-                let userinfo = await person.findUser({ shortid: msg.user.id }, true);
-                if (!userinfo)
-                    throw "E_USERNOTFOUND";
 
-                msg.user.name = userinfo.diplayname;
-            }
-            catch (e) {
-                console.error("ERROR: Cannot find user");
-                console.error(e);
+
+        let teamid = group.teamid;
+        let queues = group.queues;
+        let players = group.players;
+        let captain = group.captain;
+
+        //captain must be specified
+        if (!group.captain)
+            return false;
+
+        //teamid is optional, if it exists find the team information
+        if (group.teamid) {
+
+            let teaminfo = await storage.getTeam(group.teamid);
+            if (teaminfo) {
+                //requestor must be the captain of the team
+                if (group.captain != teaminfo.captain) {
+                    return false;
+                }
+
+                //overwrite the players list sent in request (shouldn't have one but just incase), 
+                // because we have the team players list already
+                group.players = teaminfo.players;
             }
         }
 
-        for (var i = 0; i < queues.length; i++) {
-            let queue = queues[i];
-            let game_slug = queue.game_slug;
-            let mode = queue.mode;
+        //there must be players defined to continue
+        if (!group.players || group.players.length == 0) {
+            return false;
+        }
 
-            this.addToQueue(msg.user.id, msg.user.name, game_slug, mode);
+        //builds shortid and game_slug lists to query player ratings of group
+        let shortids = [];
+        let game_slugs = [];
+        for (const queue of group.queues)
+            game_slugs.push(queue.game_slug);
+        for (const player of group.players)
+            shortids.push(shortids);
+
+
+        //builds a group for every mode/game_slug pair
+        let parties = {};
+        for (const queue of group.queues) {
+            let key = queue.mode + '/' + queue.game_slug;
+            parties[key] = {
+                game_slug: queue.game_slug,
+                mode: queue.mode,
+                players: group.players,
+                teamid: group.teamid,
+                captain: group.captain,
+                threshold: 0,
+                createDate: Date.now()
+            }
+        }
+
+        //find all player ratings for each game being queued
+        let groupRatings = rooms.findGroupRatings(shortids, game_slugs);
+
+        //set ratings for each team group and individual player
+        for (const key in parties) {
+            let party = parties[key];
+            let game_slug = party.game_slug;
+
+            let groupRating = 0;
+            let minRating = Number.MAX_SAFE_INTEGER;
+            let maxRating = 0;
+            for (const player of party.players) {
+
+                let playerRating = groupRatings[player.shortid][game_slug];
+                player.rating = playerRating.rating;
+
+                if (player.rating < minRating)
+                    minRating = player.rating;
+
+                if (player.rating > maxRating)
+                    maxRating = player.rating;
+
+                groupRating += player.rating;
+            }
+
+            //group rating is average + 50% of the way to highest ranked player
+            let groupRatingAverage = (groupRating / party.players.length)
+            groupRating = groupRatingAverage + ((maxRating - groupRatingAverage) * 0.5);
+
+            parties[key].rating = groupRating;
+        }
+
+        //send the team group to the queue for each game
+        for (const key in parties) {
+            let party = parties[key];
+            this.addToQueue(party);
         }
 
     }
-    async addToQueue(shortid, username, game_slug, mode, skipRedis) {
 
-        // let shortid = msg.user.id;
+    async addToQueue(party, skipRedis) {
 
+        let key = party.mode + '/' + party.game_slug;
 
-        this.playerNames[shortid] = username;// msg.user.name;
+        if (!(key in this.queues))
+            this.queues[key] = yallist.create();
 
-        //check if player needs to be created
-        var playerQueues = this.players[shortid];
-        if (!playerQueues) {
-            playerQueues = this.createPlayerQueueMap();
+        let list = this.queues[key];
+
+        // let captainKey = key + '/' + party.captain;
+        if (!(party.captain in this.queuedParties)) {
+            this.queuedParties[party.captain] = {};
         }
 
-        if (!playerQueues[mode]) {
-            playerQueues[mode] = {};
-        }
-
-        // console.log("creating new playerQueues", shortid);
-        // if(!playerQueues[mode][game_slug]) {
-        //     this.players[shortid] = playerQueues;
-        // }
-
-        if (playerQueues[mode][game_slug]) {
-            console.log("ALREADY IN QUEUE: ", shortid, game_slug, mode);
-            return;
-        }
-
-        // console.log("player queue exists: ", shortid, mode, game_slug);
-        // let playerQueue = playerQueues[mode][game_slug];
-        // if (playerQueue) {
-        //     console.log("ALREADY IN QUEUE: ", shortid, game_slug, mode);
-        //     return; //already in queue
-        // }
-
-        try {
-            if (!skipRedis)
-                redis.hset('queuePlayers', shortid, username);
-        }
-        catch (e) {
-            console.error(e);
-        }
-
+        this.queuedParties[party.captain][key] = party;
+        party.node = list.push(party.captain);
 
         //notify chats that someone has joined a queue
-        let gameinfo = await storage.getGameInfo(game_slug);
+        let gameinfo = await storage.getGameInfo(party.game_slug);
         if (gameinfo && gameinfo.maxplayers > 1) {
-            await rabbitmq.publishQueue('notifyDiscord', { 'type': 'queue', shortid, username, game_title: (gameinfo?.name || game_slug), game_slug, mode, thumbnail: (gameinfo?.preview_images || '') })
+            await rabbitmq.publishQueue('notifyDiscord', {
+                'type': 'queue',
+                captain: party.captain,
+                players: party.players,
+                rating: party.rating,
+                game_title: (gameinfo?.name || party.game_slug),
+                game_slug: party.game_slug,
+                mode: party.mode,
+                thumbnail: (gameinfo?.preview_images || '')
+            })
         }
-
-
-
-
-        //check if mode exist
-        let queuesMode = this.queues[mode];
-        if (!queuesMode) {
-            console.log("Queue for mode does not exist: ", mode);
-            this.queues[mode] = {};
-        }
-
-        //check if game exist in mode
-        //add user to list
-        let list = this.queues[mode][game_slug];
-        if (!list) {
-            console.log("Creating queue list: ", mode, game_slug);
-            list = yallist.create();
-            this.queues[mode][game_slug] = list;
-            try {
-                if (!skipRedis) {
-                    redis.hset('queueExists', mode + '/' + game_slug, true);
-
-                }
-            }
-            catch (e) {
-                console.error(e);
-            }
-
-        }
-
-        try {
-            if (!skipRedis) {
-                redis.sadd('queues/' + mode + '/' + game_slug, shortid);
-            }
-        }
-        catch (e) {
-            console.error(e);
-        }
-
-
-
-        //mark that player is in queue already
-        if (mode == 'rank') {
-            let rating = await rooms.findPlayerRating(shortid, game_slug);
-            console.log("[RANK] Found player rating: ", rating);
-            let node = list.push(shortid);
-            playerQueues[mode][game_slug] = { rating: rating.rating, node };
-        }
-        else {
-            console.log("[" + mode + "] adding user to queue: ", shortid, mode, game_slug);
-            let node = list.push(shortid);
-            playerQueues[mode][game_slug] = { node };
-        }
-
-        //let result = this.matchPlayers(mode, game_slug);
-
-        try {
-            if (!skipRedis) {
-                redis.hset('queueCount', game_slug, list.size());
-            }
-        }
-        catch (e) {
-            console.error(e);
-        }
-
-
-        this.players[shortid] = playerQueues;
 
         await this.retryMatchPlayers(mode, game_slug, true);
-
-
     }
+
 
     async retryMatchPlayers(mode, game_slug, skipTimer) {
         let modeId = await rooms.getGameModeID(mode);
@@ -386,10 +383,14 @@ class QueueManager {
         let retryDelay = modeData.retryDelay || 2000;
         let timeoutKey = mode + ' ' + game_slug;
         let timeoutHandle = this.timeouts[timeoutKey] || 0;
+
+        //only allow a single settimeout to keep attempting rank convergence
         if (timeoutHandle > 0) {
             clearTimeout(this.timeouts[timeoutKey])
             this.timeouts[timeoutKey] = 0;
         }
+
+        //match players together for specific mode/game_slug
         if (skipTimer) {
             this.timeouts[timeoutKey] = setTimeout(() => { this.matchPlayers(mode, game_slug); }, retryDelay / 10)
         }
@@ -400,26 +401,43 @@ class QueueManager {
 
     async matchPlayers(mode, game_slug) {
         try {
-            let list = this.queues[mode][game_slug];
+            let key = mode + '/' + game_slug;
+
+            let list = this.queues[key];
             if (!list || list.size() == 0)
                 return false;
 
+            //grab the gameinfo so we know min/max sizes of game and game defined teams
             let gameinfo = await storage.getGameInfo(game_slug);
             if (!gameinfo) {
-                delete this.queues[mode][game_slug];
+                delete this.queues[key];
                 return;
             }
 
-            let result = false;
+            //ranked matches try to match based on user ratings
             if (mode == 'rank') {
                 result = await this.attemptRankedMatch(gameinfo, list);
             }
+            //all other matches don't matter
             else
                 result = await this.attemptAnyMatch(gameinfo, mode, list);
 
-            if (list.size() >= gameinfo.minplayers) {
+            let allPlayerCount = 0;
+            //players are still in list, attempt more matches
+            list.forEach((captain, i, list, node) => {
+
+                if (!this.queuedParties[captain] || !this.queuedParties[captain][key]) {
+                    return;
+                }
+                let party = this.queuedParties[captain][key];
+                allPlayerCount += party?.players?.length || 0;
+            });
+
+            //simple use case, but in future, make it more advanced based on team sizes too 
+            if (allPlayerCount >= gameinfo.minplayers) {
                 this.retryMatchPlayers(mode, game_slug);
             }
+
 
         }
         catch (e) {
@@ -500,87 +518,135 @@ class QueueManager {
         return list.size() == 0;
     }
 
-    async attemptRankedMatch(gameinfo, list) {
+    //only use for small arrays of < 100
+    selectRandomPlayers(arr, n) {
+        // Shuffle array
+        const shuffled = arr.sort(() => 0.5 - Math.random());
 
+        // Get sub-array of first n elements after shuffled
+        let selected = shuffled.slice(0, n);
+
+        let spectators = shuffled.slice(n);
+
+        return { selected, spectators };
+    }
+
+    createTeamSizes(gameinfo) {
+        //create the game defined team vacancy sizes and player list
+        //parties that have leftover players will be pushed to spectator list
+        let teamsBySize = [];
+        let maxTeamSize = 0;
+        //free for all scenario
+        if (gameinfo.teams == 0) {
+            for (let i = 0; i < gameinfo.maxplayers; i++) {
+                let teamid = i + 1;
+                teamsBySize.push({ team_slug: 'team_' + teamid, maxplayers: 1, vacancy: 1, players: [], spectators: [] })
+            }
+            maxTeamSize = 1;
+        }
+        //battlegrounds scenario
+        else if (gameinfo.teams == 1) {
+            let team = gameinfo.teamlist[0];
+            let maxteamcount = Math.floor(gameinfo.maxplayers / team.maxplayers)
+            for (let i = 0; i < maxteamcount; i++) {
+                let teamid = i + 1;
+                teamsBySize.push({ team_slug: 'team_' + teamid, maxplayers: team.maxplayers, vacancy: team.maxplayers, players: [], spectators: [] })
+            }
+            maxTeamSize = team.maxplayers;
+        }
+        //traditional team scenario
+        else {
+            for (const team of gameinfo.teamlist) {
+                if (team.maxplayers > maxTeamSize)
+                    maxTeamSize = team.maxplayers;
+                teamsBySize.push({ team_slug: team.team_slug, maxplayers: team.maxplayers, vacancy: team.maxplayers, players: [], spectators: [] });
+            }
+        }
+        //sort in descending order, so we can fill largest vacancies first
+        teamsBySize.sort((a, b) => {
+            b.vacancy - a.vacancy;
+        })
+
+        return teamsBySize;
+    }
+
+
+    //Algorithm for team-based Matchmaking
+    //sort player parties by size desc
+    //sort game defined teams by size desc
+    //loop parties, then loop teams
+    //store top vacancy sizes per teams that can support most party players
+    //if team vacancy sizes + threshold are less than max team size
+    //   - break out of loop and skip team
+    //      - increase threshold by 1 each time party is checked and didn't join team
+    //add party to random team that supports their size
+    //update new gameteam sizes to match vacancies
+    //break and move to next party
+    async attemptRankedMatch(gameinfo, list) {
 
         let game_slug = gameinfo.game_slug;
         let mode = 'rank';
 
+        //make sure our first node exists
         let cur = list.first();
         if (cur == null)
             return false; //this should happen, but its here just in case
 
-        let min = gameinfo.minplayers;
-        let max = gameinfo.maxplayers;
-
-        //single player game, join them immediately
-        if (max == 1) {
-            console.log("Single player game: creat game and join players", game_slug, mode);
-            await this.createGameAndJoinPlayers(gameinfo, mode, [cur]);
-            return true;
-        }
-
+        //get mode data for rating radius spread
         let modeInfos = await storage.getModes();
         let modeId = await rooms.getGameModeID(mode);
         let modeInfo = modeInfos[modeId];
         let modeData = modeInfo.data || {};
-
-        let attemptKey = mode + " " + game_slug;
+        let attemptKey = mode + "/" + game_slug;
 
         //default the attempts counter
         if (typeof this.attempts[attemptKey] === 'undefined') {
             this.attempts[attemptKey] = 0;
         }
 
-        //load the mode data for this queue and init the lobbies array
-        let lobbies = [];
+
         let depth = this.attempts[attemptKey];
         let delta = modeData.delta || 50;
         let threshold = modeData.threshold || 200;
         let offset = threshold + (delta * depth);
         let maxLobbies = (5000 / offset) + 1;
-        for (let i = 0; i < maxLobbies; i++) {
-            lobbies.push([]);
-        }
+        let lobbies = new Array(maxLobbies);
 
-        //move each player into one of the lobbies by their ranking
-        let invalidPlayers = [];
-        list.forEach((v, i, lst, node) => {
-            let playerA = this.getPlayerQueue(v, mode, game_slug);
-            if (!playerA) {
-                console.error("Invalid player found: ", v, mode, game_slug);
-                node.remove();
-                invalidPlayers.push(v);
+        //Build lobbies by grouping parties based on party rating
+        list.forEach((captain, i, lst, node) => {
+
+            if (!this.queuedParties[captain] || !this.queuedParties[captain][attemptKey])
                 return;
+
+            let party = this.queuedParties[captain][attemptKey];
+            if (!party)
+                return;
+
+            if (!party.players || party.players.length == 0) {
+                //leave queue here
             }
-            let lobbyId = parseInt(Math.ceil(playerA.rating / offset));
-            console.log("[" + v + "] = ", lobbyId, playerA.rating)
-            lobbies[lobbyId].push(node);
+
+
+            let lobbyId = parseInt(Math.ceil(party.rating / offset));
+            console.log("[" + v + "] = ", lobbyId, party.rating)
+            lobbies[lobbyId].push(captain);
         })
 
-        for (var i = 0; i < invalidPlayers.length; i++) {
-            let shortid = invalidPlayers[i];
-            let username = this.playerNames[shortid];
-            this.addToQueue(shortid, username, game_slug, mode);
-        }
 
-        //for each lobby, check if we can create a game
-        for (let i = 0; i < lobbies.length; i++) {
-            let lobby = lobbies[i];
-            let group = [];
-            for (let j = 0; j < lobby.length; j++) {
-                group.push(lobby[j]);
-                if (group.length == max) {
-                    console.log("group.length == max: creat game and join players", game_slug, mode);
-                    await this.createGameAndJoinPlayers(gameinfo, mode, group);
-                    group = [];
-                }
-                else if (lobby.length < max && group.length >= min && this.attempts[attemptKey] % 10 == 0) {
-                    console.log("lobby.length < max: creat game and join players", game_slug, mode);
-                    await this.createGameAndJoinPlayers(gameinfo, mode, group);
-                    group = [];
-                }
+        //create the partySizes of all players in the queue for this mode/game_slug
+        for (const lobby of lobbies) {
+
+            let parties = this.buildRoomFromLobby(lobby, gameinfo, mode);
+
+            for (const party of parties) {
+                party.node.remove();
+
+                delete this.queuedParties[party.captain]
             }
+
+
+
+
         }
 
         //increase the attempt count so we can widen the range of player compatibiity
@@ -591,10 +657,99 @@ class QueueManager {
             console.log("List size == 0, cleanup queue", game_slug, mode);
             let attemptKey = mode + " " + game_slug;
             delete this.attempts[attemptKey];
-            delete this.queues[mode][game_slug];
+            delete this.queues[attemptKey];
         }
 
         return list.size() == 0;
+    }
+
+    async buildRoomFromLobby(lobby, gameinfo, mode, usedParties) {
+
+        usedParties = usedParties || [];
+
+        let key = mode + '/' + gameinfo.game_slug;
+
+        let teamsBySize = this.createTeamSizes(gameinfo);
+
+        let partiesBySize = [];
+
+        let originalLobbySize = 0;
+
+        //build party list to sort the lobby by party size
+        for (const captain of lobby) {
+            if (!this.queuedParties[captain] || !this.queuedParties[captain][key])
+                return;
+
+            let party = this.queuedParties[captain][key];
+            originalLobbySize += party.players.length;
+            partiesBySize.push(party);
+        }
+
+        //sort parties by size in descending order, so we can join largest parties first
+        partiesBySize.sort((a, b) => {
+            return b.players.length - a.players.length;
+        })
+
+        // let parties = [];
+        let newLobby = [];
+        let remainingPlayers = 0;
+        //loop through all parties in the queue
+        for (const party of partiesBySize) {
+            let validTeams = [];
+
+            //grab the valid teams this party can join
+            //the vacancy + threshold must be bigger than maxTeamSize for this game
+            for (const team of teamsBySize) {
+                // let playerlimit = team.vacancy + party.threshold;
+                if (party.players.length <= team.vacancy) {
+                    validTeams.push(team);
+                }
+            }
+
+            //no valid teams for this party, skip and go to next party
+            if (validTeams.length == 0) {
+                newLobby.push(party);
+                remainingPlayers += party.players.length;
+                continue;
+            }
+
+            let selectedTeam = validTeams[Math.floor(Math.random() * validTeams.length)];
+            // let partyPlayers = [...party.players];
+            // let { selected, spectators } = this.selectRandomPlayers(partyPlayers, selectedTeam.vacancy);
+
+            //move players into the team
+            for (const shortid in party.players) {
+                let player = party.players[shortid];
+                selectedTeam.players.push({ shortid, displayname: player.displayname, rating: player.rating });
+            }
+
+            usedParties.push(party);
+            //move unselected players to spectators
+            // for (const player of spectators)
+            //     selectedTeam.spectators.push(player);
+
+            //update team vacancy count
+            selectedTeam.vacancy -= selectedPlayers.length;
+        }
+
+        //make sure all teams have minimum player requirements
+        let isLobbyFilled = true;
+        for (const team of teamsBySize) {
+            if (team.players.length < team.minplayers) {
+                isLobbyFilled = false;
+                break;
+            }
+        }
+
+        if (isLobbyFilled) {
+            await this.createGameAndJoinPlayers(gameinfo, mode, teamsBySize);
+        }
+
+        if (remainingPlayers >= gameinfo.maxplayers && remainingPlayers != originalLobbySize) {
+            usedParties = await this.buildRoomFromLobby(newLobby, gameinfo, mode, usedParties);
+        }
+
+        return usedParties;
     }
 
     comparePlayers(a, b, depth, threshold) {
@@ -613,71 +768,65 @@ class QueueManager {
     }
 
 
-    async createGameAndJoinPlayers(gameinfo, mode, lobby) {
+    async createGameAndJoinPlayers(gameinfo, mode, gameroom) {
 
+        let owner = null;
+        let actions = [];
+        let highestRating = 0;
+
+        for (const team of gameroom) {
+
+            if (owner == null && team.players.length > 0) {
+                owner = team.players[0].shortid;
+            }
+
+            for (const player of team.players) {
+
+
+                let action = { type: 'join', room_slug, user: {} };
+                action.user.shortid = player.shortid;
+                action.user.displayname = player.displayname;
+                action.user.rating = player.rating;
+
+                if (player.rating > highestRating)
+                    highestRating = player.rating;
+
+                if (gameinfo.teams == 0)
+                    continue;
+
+                action.user.team_slug = team.team_slug;
+            }
+
+            actions.push(msg);
+        }
 
         //create room using the first player in lobby
-        let shortid = lobby[0].val();
-        let playerQueue = this.players[shortid][mode][gameinfo.game_slug];
-        let room = await this.createRoom(gameinfo.game_slug, mode, shortid, playerQueue.rating || 0);
+        let room = await this.createRoom(gameinfo.game_slug, mode, owner, highestRating);
         let room_slug = room.room_slug;
 
-        let attemptKey = mode + " " + gameinfo.game_slug;
-        let actions = [];
-
-
-        let shortids = [];
-        //loop through lobby to cleanup the player from queues data 
-        // and join them to the newly created room
-        for (let i = 0; i < lobby.length; i++) {
-            let node = lobby[i];
-            let shortid = node.val();
-            if (!this.players[shortid])
-                return;
-            let playerQueue = this.players[shortid][mode][gameinfo.game_slug];
-
-            console.log("#" + this.count + "[" + genShortId(5) + "] Player '" + shortid + "' joining " + gameinfo.game_slug, playerQueue.rating || 0, this.processed[shortid] ? 'duplicate' : '', this.attempts[attemptKey]);
-            this.processed[shortid] = true;
-            this.count++;
-
-
-            // this.cleanupPlayer(shortid, node, mode);
-
-
-
-            //prepare the join messages to gameserver
-            let id = shortid;
-            let name = this.playerNames[shortid];
-
-            shortids.push(shortid);
-            // delete this.playerNames[shortid];
-
-            let msg = {
-                type: 'join',
-                user: { id, name },
-                room_slug
-            }
-            actions.push(msg);
-
-            this.leaveFromQueue(shortid);
-
-
-
-
-        }
-
-        await this.sendJoinRequest(gameinfo.game_slug, room_slug, actions, gameinfo)
-
-        await this.assignAndNotify(shortids, room_slug, gameinfo);
+        await this.sendJoinRequest(gameinfo, room_slug, actions);
+        await this.assignAndNotify(gameinfo, shortids, room_slug);
     }
 
-    async assignAndNotify(shortids, room_slug, gameinfo) {
+    async assignAndNotify(gameinfo, shortids, room_slug) {
         console.log("Assign and Notify: ", shortids, room_slug);
-        for (var i = 0; i < shortids.length; i++) {
-            let shortid = shortids[i];
-            await rooms.assignPlayerRoom(shortid, room_slug, gameinfo.game_slug);
+
+        try {
+            await rooms.assignPlayersToRoom(shortids, room_slug, game_slug);
         }
-        await rooms.notifyPlayerRoom(room_slug, gameinfo);
+        catch (e) {
+            console.error(e);
+        }
+
+        try {
+
+            await rooms.notifyPlayerRoom(room_slug, gameinfo);
+        }
+        catch (e) {
+            console.error(e);
+        }
+
+
     }
 
     cleanupPlayer(shortid, node, mode) {
@@ -722,29 +871,145 @@ class QueueManager {
         return roomMeta;
     }
 
-    async sendJoinRequest(game_slug, room_slug, actions, gameinfo) {
+    async sendJoinRequest(gameinfo, room_slug, actions) {
         try {
+            let game_slug = gameinfo.game_slug;
+            await rabbitmq.publishQueue('loadGame', { game_slug, room_slug, actions })
 
-            //tell our game server to load the game, if one doesn't exist already
-            let msg = {
+            await rabbitmq.publishQueue('notifyDiscord', {
+                'type': 'join',
+                actions,
+                game_title: (gameinfo?.name || game_slug),
                 game_slug,
-                room_slug
-            }
-            let key = game_slug + '/' + room_slug;
-            // let exists = await rabbitmq.assertQueue(key);
-            // if (!exists) {
-            await rabbitmq.publishQueue('loadGame', { msg, key, actions })
-            // }
-
-            await rabbitmq.publishQueue('notifyDiscord', { 'type': 'join', actions, game_title: (gameinfo?.name || game_slug), game_slug, room_slug, thumbnail: (gameinfo?.preview_images || '') })
-
-            //send the join requests to game server
-
-            // await rabbitmq.publish('game', key, actions);
+                room_slug,
+                thumbnail: (gameinfo?.preview_images || '')
+            })
         }
         catch (e) {
             console.error(e);
         }
+    }
+
+
+    async addToQueueOLD(shortid, username, game_slug, mode, skipRedis) {
+
+        // let shortid = msg.user.id;
+
+
+        this.playerNames[shortid] = username;// msg.user.name;
+
+        //check if player needs to be created
+        var playerQueues = this.players[shortid];
+        if (!playerQueues) {
+            playerQueues = this.createPlayerQueueMap();
+        }
+
+        if (!playerQueues[mode]) {
+            playerQueues[mode] = {};
+        }
+
+        // console.log("creating new playerQueues", shortid);
+        // if(!playerQueues[mode][game_slug]) {
+        //     this.players[shortid] = playerQueues;
+        // }
+
+        if (playerQueues[mode][game_slug]) {
+            console.log("ALREADY IN QUEUE: ", shortid, game_slug, mode);
+            return;
+        }
+
+        // console.log("player queue exists: ", shortid, mode, game_slug);
+        // let playerQueue = playerQueues[mode][game_slug];
+        // if (playerQueue) {
+        //     console.log("ALREADY IN QUEUE: ", shortid, game_slug, mode);
+        //     return; //already in queue
+        // }
+
+        try {
+            if (!skipRedis)
+                redis.hset('queuePlayers', shortid, username);
+        }
+        catch (e) {
+            console.error(e);
+        }
+
+
+        //notify chats that someone has joined a queue
+        let gameinfo = await storage.getGameInfo(game_slug);
+        if (gameinfo && gameinfo.maxplayers > 1) {
+            await rabbitmq.publishQueue('notifyDiscord', { 'type': 'queue', shortid, username, game_title: (gameinfo?.name || game_slug), game_slug, mode, thumbnail: (gameinfo?.preview_images || '') })
+        }
+
+
+
+
+        //check if mode exist
+        let queuesMode = this.queues[mode];
+        if (!queuesMode) {
+            console.log("Queue for mode does not exist: ", mode);
+            this.queues[mode] = {};
+        }
+
+        //check if queue doubly-linked list exists, if not create one
+        let list = this.queues[mode][game_slug];
+        if (!list) {
+            console.log("Creating queue list: ", mode, game_slug);
+            list = yallist.create();
+            this.queues[mode][game_slug] = list;
+            try {
+                if (!skipRedis) {
+                    redis.hset('queueExists', mode + '/' + game_slug, true);
+
+                }
+            }
+            catch (e) {
+                console.error(e);
+            }
+
+        }
+
+        //save user into the queue list on redis
+        try {
+            if (!skipRedis) {
+                redis.sadd('queues/' + mode + '/' + game_slug, shortid);
+            }
+        }
+        catch (e) {
+            console.error(e);
+        }
+
+
+
+        //update player queue with their linked list node and rating 
+        if (mode == 'rank') {
+            let rating = await rooms.findPlayerRating(shortid, game_slug);
+            console.log("[RANK] Found player rating: ", rating);
+            let node = list.push(shortid);
+            playerQueues[mode][game_slug] = { rating: rating.rating, node };
+        }
+        //update player queue with the linked list node
+        else {
+            console.log("[" + mode + "] adding user to queue: ", shortid, mode, game_slug);
+            let node = list.push(shortid);
+            playerQueues[mode][game_slug] = { node };
+        }
+
+
+        //update the player queue count
+        try {
+            if (!skipRedis) {
+                redis.hset('queueCount', game_slug, list.size());
+            }
+        }
+        catch (e) {
+            console.error(e);
+        }
+
+        //make sure its saved back to the player object
+        this.players[shortid] = playerQueues;
+
+        //attempt to match players every time someone is added to queue
+        await this.retryMatchPlayers(mode, game_slug, true);
     }
 }
 
