@@ -22,7 +22,7 @@ class PlayerReceiver {
             }
 
 
-            await queuemanager.loadQueues();
+            // await queuemanager.loadQueues();
 
             await rabbitmq.subscribeQueue('leaveTeam', this.onLeaveTeam.bind(this));
             await rabbitmq.subscribeQueue('joinTeam', this.onJoinTeam.bind(this));
