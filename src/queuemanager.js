@@ -1,7 +1,8 @@
 const rabbitmq = require('shared/services/rabbitmq');
 const redis = require('shared/services/redis');
 const rooms = require('shared/services/room');
-const person = require('shared/services/person');
+const PersonService = require('shared/services/person');
+const person = new PersonService();
 
 const profiler = require('shared/util/profiler');
 const credutil = require('shared/util/credentials');
@@ -76,13 +77,17 @@ class QueueManager {
 
     }
 
+    isObject(x) {
+        return x != null && (typeof x === 'object' || typeof x === 'function') && !Array.isArray(x);
+    }
+
     async onAddToTeam(payload) {
 
         let teamid = payload.teamid;
         let players = payload.players;
         let captain = payload.captain;
 
-        if (!players || !Array.isArray(players) || players.length == 0) {
+        if (!players || !this.isObject(players) || players.length == 0) {
             return false;
         }
 
@@ -114,7 +119,9 @@ class QueueManager {
         storage.setTeam(teamid, teaminfo);
 
         //let users know their team was updated
-        rabbitmq.publish('ws', 'joinedTeam', teams[teamid]);
+        rabbitmq.publish('ws', 'joinedTeam', teaminfo);
+
+        return teamid;
     }
 
     async onLeaveFromTeam(payload) {
@@ -159,13 +166,13 @@ class QueueManager {
 
         let parties = this.queuedParties[shortid];
 
-        if (!party) {
+        if (!parties) {
             console.warn("[leaveFromQueue] Captain not in our list: ", shortid);
             return;
         }
 
         let response = { queues: [] };
-        for (const key of parties) {
+        for (const key in parties) {
             let parts = key.split('/');
             let mode = parts[0];
             let game_slug = parts[1];
@@ -184,11 +191,13 @@ class QueueManager {
             }
 
             response.queues.push({ mode, game_slug });
+
+            party.node.remove();
         }
 
         rabbitmq.publish('ws', 'onQueueUpdate', { type: 'removed', payload: response });
 
-        party.node.remove();
+
 
         delete this.queuedParties[shortid];
 
@@ -304,7 +313,12 @@ class QueueManager {
 
                 //overwrite the players list sent in request (shouldn't have one but just incase), 
                 // because we have the team players list already
-                msg.players = teaminfo.players;
+
+                let partyPlayers = [];
+                for (const shortid in teaminfo.players) {
+                    partyPlayers.push({ shortid, displayname: teaminfo.players[shortid] })
+                }
+                msg.players = partyPlayers;
             }
         }
 
@@ -388,6 +402,11 @@ class QueueManager {
             this.queuedParties[party.captain] = {};
         }
 
+        if (key in this.queuedParties[party.captain]) {
+            console.warn('User already in queue: ', party.captain);
+            return;
+        }
+
         this.queuedParties[party.captain][key] = party;
         party.node = list.push(party.captain);
 
@@ -406,7 +425,7 @@ class QueueManager {
             })
         }
 
-        await this.retryMatchPlayers(mode, game_slug, true);
+        await this.retryMatchPlayers(party.mode, party.game_slug, true);
     }
 
 
@@ -415,8 +434,8 @@ class QueueManager {
         let modeInfos = await storage.getModes();
         let modeInfo = modeInfos[modeId];
         let modeData = modeInfo.data || {};
-        let retryDelay = modeData.retryDelay || 2000;
-        let timeoutKey = mode + ' ' + game_slug;
+        let retryDelay = 5000;// modeData.retryDelay || 2000;
+        let timeoutKey = mode + '/' + game_slug;
         let timeoutHandle = this.timeouts[timeoutKey] || 0;
 
         //only allow a single settimeout to keep attempting rank convergence
@@ -506,56 +525,56 @@ class QueueManager {
         }
     }
 
-    async attemptAnyMatch(gameinfo, mode, list) {
+    // async attemptAnyMatch(gameinfo, mode, list) {
 
-        let cur = list.first();
-        if (cur == null)
-            return false;
+    //     let cur = list.first();
+    //     if (cur == null)
+    //         return false;
 
-        let game_slug = gameinfo.game_slug;
-        let min = gameinfo.minplayers;
-        let max = gameinfo.maxplayers;
+    //     let game_slug = gameinfo.game_slug;
+    //     let min = gameinfo.minplayers;
+    //     let max = gameinfo.maxplayers;
 
-        if (max == 1) {
-            await this.createGameAndJoinPlayers(gameinfo, mode, [cur]);
-            return true;
-        }
+    //     if (max == 1) {
+    //         await this.createGameAndJoinPlayers(gameinfo, mode, [cur]);
+    //         return true;
+    //     }
 
-        let attemptKey = mode + " " + game_slug;
-        if (typeof this.attempts[attemptKey] === 'undefined') {
-            this.attempts[attemptKey] = 0;
-        }
+    //     let attemptKey = mode + " " + game_slug;
+    //     if (typeof this.attempts[attemptKey] === 'undefined') {
+    //         this.attempts[attemptKey] = 0;
+    //     }
 
-        //move each player into one of the lobbies by their ranking
-        let players = list.toArray();
-        let lobbies = [];
-        let lobby = [];
-        list.forEach((v, i, list, node) => {
-            lobby.push(node);
-            if (lobby.length == max ||
-                (lobby.length < max &&
-                    lobby.length >= min &&
-                    (this.attempts[attemptKey] % 5 == 0))) {
-                lobbies.push(lobby);
-                lobby = [];
-            }
-        })
+    //     //move each player into one of the lobbies by their ranking
+    //     let players = list.toArray();
+    //     let lobbies = [];
+    //     let lobby = [];
+    //     list.forEach((v, i, list, node) => {
+    //         lobby.push(node);
+    //         if (lobby.length == max ||
+    //             (lobby.length < max &&
+    //                 lobby.length >= min &&
+    //                 (this.attempts[attemptKey] % 5 == 0))) {
+    //             lobbies.push(lobby);
+    //             lobby = [];
+    //         }
+    //     })
 
-        for (let i = 0; i < lobbies.length; i++) {
-            let lobby = lobbies[i];
-            await this.createGameAndJoinPlayers(gameinfo, mode, lobby);
-        }
+    //     for (let i = 0; i < lobbies.length; i++) {
+    //         let lobby = lobbies[i];
+    //         await this.createGameAndJoinPlayers(gameinfo, mode, lobby);
+    //     }
 
-        this.attempts[attemptKey]++;
+    //     this.attempts[attemptKey]++;
 
-        if (list.size() == 0) {
-            let attemptKey = mode + " " + game_slug;
-            delete this.attempts[attemptKey];
-            delete this.queues[mode][game_slug];
-        }
+    //     if (list.size() == 0) {
+    //         let attemptKey = mode + " " + game_slug;
+    //         delete this.attempts[attemptKey];
+    //         delete this.queues[mode][game_slug];
+    //     }
 
-        return list.size() == 0;
-    }
+    //     return list.size() == 0;
+    // }
 
     //only use for small arrays of < 100
     selectRandomPlayers(arr, n) {
@@ -576,20 +595,20 @@ class QueueManager {
         let teamsBySize = [];
         let maxTeamSize = 0;
         //free for all scenario
-        if (gameinfo.teams == 0) {
+        if (!gameinfo.maxteams) {
             for (let i = 0; i < gameinfo.maxplayers; i++) {
                 let teamid = i + 1;
-                teamsBySize.push({ team_slug: 'team_' + teamid, maxplayers: 1, vacancy: 1, players: [], spectators: [] })
+                teamsBySize.push({ team_slug: 'team_' + teamid, maxplayers: 1, minplayers: 1, vacancy: 1, players: [], captains: [] })
             }
             maxTeamSize = 1;
         }
         //battlegrounds scenario
-        else if (gameinfo.teams == 1) {
+        else if (gameinfo.maxteams == 1) {
             let team = gameinfo.teamlist[0];
             let maxteamcount = Math.floor(gameinfo.maxplayers / team.maxplayers)
             for (let i = 0; i < maxteamcount; i++) {
                 let teamid = i + 1;
-                teamsBySize.push({ team_slug: 'team_' + teamid, maxplayers: team.maxplayers, vacancy: team.maxplayers, players: [], spectators: [] })
+                teamsBySize.push({ team_slug: 'team_' + teamid, maxplayers: team.maxplayers, minplayers: team.minplayers, vacancy: team.maxplayers, players: [], captains: [] })
             }
             maxTeamSize = team.maxplayers;
         }
@@ -598,7 +617,7 @@ class QueueManager {
             for (const team of gameinfo.teamlist) {
                 if (team.maxplayers > maxTeamSize)
                     maxTeamSize = team.maxplayers;
-                teamsBySize.push({ team_slug: team.team_slug, maxplayers: team.maxplayers, vacancy: team.maxplayers, players: [], spectators: [] });
+                teamsBySize.push({ team_slug: team.team_slug, maxplayers: team.maxplayers, minplayers: team.minplayers, vacancy: team.maxplayers, players: [], captains: [] });
             }
         }
         //sort in descending order, so we can fill largest vacancies first
@@ -648,7 +667,7 @@ class QueueManager {
         let delta = modeData.delta || 50;
         let threshold = modeData.threshold || 200;
         let offset = threshold + (delta * depth);
-        let maxLobbies = (5000 / offset) + 1;
+        let maxLobbies = Math.ceil((5000 / offset) + 1);
         let lobbies = new Array(maxLobbies);
 
         //Build lobbies by grouping parties based on party rating
@@ -667,17 +686,21 @@ class QueueManager {
 
 
             let lobbyId = parseInt(Math.ceil(party.rating / offset));
-            console.log("[" + v + "] = ", lobbyId, party.rating)
-            lobbies[lobbyId].push(captain);
+            console.log("[" + captain + "] = ", lobbyId, party.rating)
+
+            if (!Array.isArray(lobbies[lobbyId]))
+                lobbies[lobbyId] = [];
+            lobbies[lobbyId].push(party);
         })
 
 
         //create the partySizes of all players in the queue for this mode/game_slug
         for (const lobby of lobbies) {
+            if (!lobby)
+                continue;
+            let chosenParties = await this.buildRoomsFromLobby(lobby, gameinfo, mode, []);
 
-            let parties = this.buildRoomsFromLobby(lobby, gameinfo, mode);
-
-            for (const captain of parties) {
+            for (const captain of chosenParties) {
 
                 this.leaveFromQueue(captain);
 
@@ -702,9 +725,9 @@ class QueueManager {
         return list.size() == 0;
     }
 
-    async buildRoomsFromLobby(lobby, gameinfo, mode, usedParties) {
+    async buildRoomsFromLobby(lobby, gameinfo, mode, chosenParties) {
 
-        usedParties = usedParties || [];
+        chosenParties = chosenParties || [];
 
         let key = mode + '/' + gameinfo.game_slug;
 
@@ -715,11 +738,11 @@ class QueueManager {
         let originalLobbySize = 0;
 
         //build party list to sort the lobby by party size
-        for (const captain of lobby) {
-            if (!this.queuedParties[captain] || !this.queuedParties[captain][key])
-                return;
+        for (const party of lobby) {
+            if (!this.queuedParties[party.captain] || !this.queuedParties[party.captain][key])
+                continue;
 
-            let party = this.queuedParties[captain][key];
+            // let qparty = this.queuedParties[party.captain][key];
             originalLobbySize += party.players.length;
             partiesBySize.push(party);
         }
@@ -731,6 +754,7 @@ class QueueManager {
 
         // let parties = [];
         let newLobby = [];
+        let tempChosenParties = [];
         let remainingPlayers = 0;
         //loop through all parties in the queue
         for (const party of partiesBySize) {
@@ -752,47 +776,70 @@ class QueueManager {
                 continue;
             }
 
-            let selectedTeam = validTeams[Math.floor(Math.random() * validTeams.length)];
+            //ascending order by vacancy, so we fill up teams with people first
+            validTeams.sort((a, b) => a.vacancy - b.vacancy)
+
+            let selectedTeam = validTeams[0];// validTeams[Math.floor(Math.random() * validTeams.length)];
             // let partyPlayers = [...party.players];
             // let { selected, spectators } = this.selectRandomPlayers(partyPlayers, selectedTeam.vacancy);
 
             //move players into the team
-            for (const shortid in party.players) {
-                let player = party.players[shortid];
-                selectedTeam.players.push({ shortid, displayname: player.displayname, rating: player.rating });
+            for (const player of party.players) {
+                // let player = party.players[shortid];
+                selectedTeam.players.push({ shortid: player.shortid, displayname: player.displayname, rating: player.rating });
             }
 
-            usedParties.push(party.captain);
+            selectedTeam.captains.push(party.captain);
+            // selectedTeam.parties.push(party);
+
+            if (!selectedTeam.parties) {
+                selectedTeam.parties = [];
+            }
+            // 
+
+
             //move unselected players to spectators
             // for (const player of spectators)
             //     selectedTeam.spectators.push(player);
 
             //update team vacancy count
-            selectedTeam.vacancy -= selectedPlayers.length;
+            selectedTeam.vacancy = selectedTeam.maxplayers - selectedTeam.players.length;
         }
 
         //make sure all teams have minimum player requirements
-        let isRoomFilled = true;
+        let failedTeams = [];
+        let passedTeams = [];
         for (const team of teamsBySize) {
             if (team.players.length < team.minplayers) {
-                isRoomFilled = false;
-                break;
+                failedTeams.push(team);
+
+                for (const captain of team.captains) {
+                    let party = this.queuedParties[captain][key];
+                    if (party) {
+                        newLobby = newLobby.push(party);
+                    }
+                }
+                remainingPlayers += team.players.length;
+            } else {
+                passedTeams.push(team);
+
+                tempChosenParties = tempChosenParties.concat(team.captains);
             }
         }
 
-        if (isLobbyFilled) {
+        if (passedTeams.length >= gameinfo.minteams) {
             await this.createGameAndJoinPlayers(gameinfo, mode, teamsBySize);
+            console.warn("Created Game Room: ", teamsBySize);
 
+            chosenParties = chosenParties.concat(tempChosenParties);
             if (remainingPlayers >= gameinfo.minplayers && remainingPlayers != originalLobbySize) {
-                usedParties = await this.buildRoomsFromLobby(newLobby, gameinfo, mode, usedParties);
+                chosenParties = await this.buildRoomsFromLobby(newLobby, gameinfo, mode, chosenParties);
             }
         }
-        else {
-            usedParties = lobby;
-        }
 
 
-        return usedParties;
+
+        return chosenParties;
     }
 
     comparePlayers(a, b, depth, threshold) {
@@ -817,6 +864,7 @@ class QueueManager {
         let actions = [];
         let highestRating = 0;
 
+        let shortids = [];
         for (const team of gameroom) {
 
             if (owner == null && team.players.length > 0) {
@@ -826,26 +874,35 @@ class QueueManager {
             for (const player of team.players) {
 
 
-                let action = { type: 'join', room_slug, user: {} };
-                action.user.shortid = player.shortid;
+                let action = { type: 'join', user: {} };
+                action.user.id = player.shortid;
                 action.user.displayname = player.displayname;
                 action.user.rating = player.rating;
+
+                shortids.push(player.shortid);
 
                 if (player.rating > highestRating)
                     highestRating = player.rating;
 
-                if (gameinfo.teams == 0)
+                actions.push(action);
+
+                if (!gameinfo.maxteams)
                     continue;
 
                 action.user.team_slug = team.team_slug;
+
             }
 
-            actions.push(msg);
+
         }
 
         //create room using the first player in lobby
         let room = await this.createRoom(gameinfo.game_slug, mode, owner, highestRating);
         let room_slug = room.room_slug;
+
+        for (let action of actions) {
+            action.room_slug = room_slug;
+        }
 
         await this.sendJoinRequest(gameinfo, room_slug, actions);
         await this.assignAndNotify(gameinfo, shortids, room_slug);
@@ -855,7 +912,7 @@ class QueueManager {
         console.log("Assign and Notify: ", shortids, room_slug);
 
         try {
-            await rooms.assignPlayersToRoom(shortids, room_slug, game_slug);
+            await rooms.assignPlayersToRoom(shortids, room_slug, gameinfo.game_slug);
         }
         catch (e) {
             console.error(e);
@@ -1063,6 +1120,8 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+let fakeusers = require('./fakeusers_final')
+
 async function start() {
 
     while (!(rabbitmq.isActive() && redis.isActive)) {
@@ -1071,8 +1130,74 @@ async function start() {
         await sleep(1000);
         //return;
     }
+    // let teamid = payload.teamid;
+    // let players = payload.players;
+    // let captain = payload.captain;
 
-    test();
+    let q = new QueueManager();
+
+    let teams = [];
+
+    for (let i = 0; i < 100; i++) {
+        let team = {
+            players: {},
+            maxplayers: Math.max(1, 1 + Math.floor((Math.random() * 10)))
+        }
+        teams.push(team);
+    }
+
+    for (let i = 0; i < fakeusers.length; i++) {
+        let fakeuser = fakeusers[i];
+        let randomTeam = teams[Math.floor(Math.random() * teams.length)]
+        if (randomTeam) {
+
+            let shortids = Object.keys(randomTeam.players);
+            if (shortids.length >= randomTeam.maxplayers) {
+                i--; //repeat until another team found
+                continue;
+            }
+
+            if (!randomTeam.captain)
+                randomTeam.captain = fakeuser.shortid;
+
+            randomTeam.players[fakeuser.shortid] = fakeuser.displayname;
+        }
+
+    }
+
+    for (const team of teams) {
+        let teamid = await q.onAddToTeam(team);
+        if (teamid) {
+            team.teamid = teamid;
+        }
+    }
+    // console.log("Created teams:", teams);
+
+    // let teamid = msg.teamid;
+    // let queues = msg.queues;
+    // let players = msg.players;
+    // let captain = msg.captain;
+
+    for (const team of teams) {
+
+        let players = [];
+        for (const shortid in team.players) {
+            players.push({ shortid, displayname: team.players[shortid] })
+        }
+
+        let queues = [{ mode: 'rank', game_slug: 'test-4' }]
+        let captain = team.captain;
+        let teamid = team.teamid;
+        await q.onAddToQueue({ captain, queues, teamid })
+
+    }
+    // for (const user of fakeusers) {
+    //     let displayname = user.username;
+    //     await person.createUser({ displayname })
+    // }
+
+
+    // test();
 }
 
 
