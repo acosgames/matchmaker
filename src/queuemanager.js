@@ -434,7 +434,7 @@ class QueueManager {
         let modeInfos = await storage.getModes();
         let modeInfo = modeInfos[modeId];
         let modeData = modeInfo.data || {};
-        let retryDelay = 5000;// modeData.retryDelay || 2000;
+        let retryDelay = modeData.retryDelay || 2000;
         let timeoutKey = mode + '/' + game_slug;
         let timeoutHandle = this.timeouts[timeoutKey] || 0;
 
