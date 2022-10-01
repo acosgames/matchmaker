@@ -809,6 +809,7 @@ class QueueManager {
         //make sure all teams have minimum player requirements
         let failedTeams = [];
         let passedTeams = [];
+        let totalPlayers = 0;
         for (const team of teamsBySize) {
             if (team.players.length < team.minplayers) {
                 failedTeams.push(team);
@@ -822,12 +823,13 @@ class QueueManager {
                 remainingPlayers += team.players.length;
             } else {
                 passedTeams.push(team);
+                totalPlayers += team.players.length;
 
                 tempChosenParties = tempChosenParties.concat(team.captains);
             }
         }
 
-        if (passedTeams.length >= gameinfo.minteams) {
+        if (passedTeams.length >= gameinfo.minteams && totalPlayers >= gameinfo.minplayers) {
             await this.createGameAndJoinPlayers(gameinfo, mode, teamsBySize);
             console.warn("Created Game Room: ", teamsBySize);
 
