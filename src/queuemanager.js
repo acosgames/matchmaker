@@ -976,7 +976,8 @@ class QueueManager {
     async sendJoinRequest(gameinfo, room_slug, actions) {
         try {
             let game_slug = gameinfo.game_slug;
-            await rabbitmq.publishQueue('loadGame', { game_slug, room_slug, actions })
+            let teams = gameinfo.teamlist || [];
+            await rabbitmq.publishQueue('loadGame', { game_slug, room_slug, actions, teams })
 
             await rabbitmq.publishQueue('notifyDiscord', {
                 'type': 'join',
@@ -984,6 +985,7 @@ class QueueManager {
                 game_title: (gameinfo?.name || game_slug),
                 game_slug,
                 room_slug,
+                teams,
                 thumbnail: (gameinfo?.preview_images || '')
             })
         }
