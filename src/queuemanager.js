@@ -1113,7 +1113,7 @@ class QueueManager {
         this.players[shortid] = playerQueues;
 
         //attempt to match players every time someone is added to queue
-        await this.retryMatchPlayers(mode, game_slug, true);
+        await this.retryMatchPlayers(mode, game_slug);
     }
 }
 
