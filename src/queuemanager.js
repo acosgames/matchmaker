@@ -473,12 +473,12 @@ class QueueManager {
 
             let result = false;
             //ranked matches try to match based on user ratings
-            // if (mode == 'rank') {
-            result = await this.attemptRankedMatch(gameinfo, list);
-            // }
+            if (mode == 'rank') {
+                result = await this.attemptRankedMatch(gameinfo, list);
+            }
             //all other matches don't matter
-            // else
-            // result = await this.attemptAnyMatch(gameinfo, mode, list);
+            else
+                result = await this.attemptAnyMatch(gameinfo, list);
 
             let allPlayerCount = 0;
             //players are still in list, attempt more matches
@@ -709,6 +709,88 @@ class QueueManager {
 
 
 
+        }
+
+        //increase the attempt count so we can widen the range of player compatibiity
+        this.attempts[attemptKey]++;
+
+        //no more players, cleanup this queue
+        if (list.size() == 0) {
+            console.log("List size == 0, cleanup queue", game_slug, mode);
+            let attemptKey = mode + " " + game_slug;
+            delete this.attempts[attemptKey];
+            delete this.queues[attemptKey];
+        }
+
+        return list.size() == 0;
+    }
+
+
+
+    async attemptAnyMatch(gameinfo, list) {
+
+        let game_slug = gameinfo.game_slug;
+        let mode = 'experimental';
+
+        //make sure our first node exists
+        let cur = list.first();
+        if (cur == null)
+            return false; //this should happen, but its here just in case
+
+        //get mode data for rating radius spread
+        let modeInfos = await storage.getModes();
+        let modeId = await rooms.getGameModeID(mode);
+        let modeInfo = modeInfos[modeId];
+        let modeData = modeInfo.data || {};
+        let attemptKey = mode + "/" + game_slug;
+
+        //default the attempts counter
+        if (typeof this.attempts[attemptKey] === 'undefined') {
+            this.attempts[attemptKey] = 0;
+        }
+
+
+        let depth = this.attempts[attemptKey];
+        let delta = modeData.delta || 50;
+        let threshold = modeData.threshold || 200;
+        let offset = threshold + (delta * depth);
+        let lobbies = new Array(1);
+
+        //Build lobbies by grouping parties based on party rating
+        list.forEach((captain, i, lst, node) => {
+
+            if (!this.queuedParties[captain] || !this.queuedParties[captain][attemptKey])
+                return;
+
+            let party = this.queuedParties[captain][attemptKey];
+            if (!party)
+                return;
+
+            if (!party.players || party.players.length == 0) {
+                //leave queue here
+            }
+
+
+            let lobbyId = 0;//parseInt(Math.ceil(party.rating / offset));
+            console.log("[" + captain + "] = ", lobbyId, party.rating)
+
+            if (!Array.isArray(lobbies[lobbyId]))
+                lobbies[lobbyId] = [];
+            lobbies[lobbyId].push(party);
+        })
+
+
+        //create the partySizes of all players in the queue for this mode/game_slug
+        for (const lobby of lobbies) {
+            if (!lobby)
+                continue;
+            let chosenParties = await this.buildRoomsFromLobby(lobby, gameinfo, mode, []);
+
+            for (const captain of chosenParties) {
+
+                this.leaveFromQueue(captain);
+
+            }
         }
 
         //increase the attempt count so we can widen the range of player compatibiity
