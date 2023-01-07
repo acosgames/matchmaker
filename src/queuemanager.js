@@ -159,6 +159,8 @@ class QueueManager {
 
         let shortid = msg.user.shortid;
 
+        console.log("onLeaveFromQueue", JSON.stringify(msg, null, 2))
+
         this.leaveFromQueue(shortid);
     }
 
