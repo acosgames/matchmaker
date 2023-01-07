@@ -178,6 +178,18 @@ class QueueManager {
             let game_slug = parts[1];
 
             let party = parties[key];
+
+            //save user into the queue list on redis
+            try {
+                for (let i = 0; i < party.players.length; i++) {
+                    let player = party.players[i];
+                    redis.srem('queues/' + mode + '/' + game_slug, player.shortid + '|' + player.displayname);
+                }
+            }
+            catch (e) {
+                console.error(e);
+            }
+
             if (!response.players) {
                 response.players = party.players;
             }
@@ -413,6 +425,19 @@ class QueueManager {
         //notify chats that someone has joined a queue
         let gameinfo = await storage.getGameInfo(party.game_slug);
         if (gameinfo && gameinfo.maxplayers > 1) {
+
+            //save user into the queue list on redis
+            try {
+                for (let i = 0; i < party.players.length; i++) {
+                    let player = party.players[i];
+                    redis.sadd('queues/' + party.mode + '/' + party.game_slug, player.shortid + '|' + player.displayname);
+                }
+            }
+            catch (e) {
+                console.error(e);
+            }
+
+
             await rabbitmq.publishQueue('notifyDiscord', {
                 'type': 'queue',
                 captain: party.captain,
