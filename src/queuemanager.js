@@ -206,6 +206,17 @@ class QueueManager {
 
             response.queues.push({ mode, game_slug });
 
+            await rabbitmq.publishQueue('notifyDiscord', {
+                'type': 'queue',
+                captain: party.captain,
+                players: party.players,
+                rating: party.rating,
+                game_title: (party.game_slug),
+                game_slug: party.game_slug,
+                mode: party.mode,
+                thumbnail: ''
+            })
+
             party.node.remove();
         }
 
