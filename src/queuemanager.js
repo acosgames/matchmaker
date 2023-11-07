@@ -897,7 +897,16 @@ class QueueManager {
             }
 
             //ascending order by vacancy, so we fill up teams with people first
-            validTeams.sort((a, b) => a.vacancy - b.vacancy)
+            validTeams.sort((a, b) => {
+
+                //randomize order if the vacancies match
+                if (a.vacancy == b.vacancy) {
+                    return Math.floor(Math.random() * 2) == 0 ? -1 : 1;
+                }
+
+                //lower vacancy first
+                return a.vacancy - b.vacancy
+            })
 
             let selectedTeam = validTeams[0];// validTeams[Math.floor(Math.random() * validTeams.length)];
             // let partyPlayers = [...party.players];
