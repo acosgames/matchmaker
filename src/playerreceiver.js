@@ -33,16 +33,16 @@ class PlayerReceiver {
     }
 
     async onLeaveTeam(msg) {
-        events.emitLeaveFromTeam(msg);
+        events.emitOnLeaveTeam(msg);
     }
     async onJoinTeam(msg) {
-        events.emitAddToTeam(msg);
+        events.emitOnJoinTeam(msg);
     }
     async onJoinQueue(msg) {
-        events.emitAddToQueue(msg);
+        events.emitOnJoinQueue(msg);
     }
     async onLeaveQueue(msg) {
-        events.emitLeaveFromQueue(msg);
+        events.emitOnLeaveQueue(msg);
     }
 }
 

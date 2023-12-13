@@ -36,15 +36,19 @@ class QueueManager {
 
         this.queuedParties = {};
 
+        this.queueSizes = {};
+        this.queueSizesTimeout = 0;
+        this.queueSizesRestartCount = 0;
+
         this.teams = {};
 
         this.processed = {};
         this.count = 0;
 
-        events.addLeaveFromTeamListener(this.onLeaveFromTeam.bind(this));
-        events.addAddToTeamListener(this.onAddToTeam.bind(this));
-        events.addAddToQueueListener(this.onAddToQueue.bind(this));
-        events.addLeaveFromQueueListener(this.onLeaveFromQueue.bind(this));
+        events.addOnLeaveTeamListener(this.onOnLeaveTeam.bind(this));
+        events.addOnJoinTeamListener(this.onOnJoinTeam.bind(this));
+        events.addOnJoinQueueListener(this.onJoinQueue.bind(this));
+        events.addOnLeaveQueueListener(this.onOnLeaveQueue.bind(this));
     }
 
     async loadQueues() {
@@ -81,7 +85,7 @@ class QueueManager {
         return x != null && (typeof x === 'object' || typeof x === 'function') && !Array.isArray(x);
     }
 
-    async onAddToTeam(payload) {
+    async onOnJoinTeam(payload) {
 
         let teamid = payload.teamid;
         let players = payload.players;
@@ -124,7 +128,7 @@ class QueueManager {
         return teamid;
     }
 
-    async onLeaveFromTeam(payload) {
+    async onOnLeaveTeam(payload) {
         let teamid = payload.teamid;
         let shortid = payload.shortid;
 
@@ -155,21 +159,73 @@ class QueueManager {
         return { rank: {}, experimental: {}, public: {}, private: {} };
     }
 
-    async onLeaveFromQueue(msg) {
+    async onOnLeaveQueue(msg) {
 
         let shortid = msg.user.shortid;
 
-        console.log("onLeaveFromQueue", JSON.stringify(msg, null, 2))
+        console.log("onOnLeaveQueue", JSON.stringify(msg, null, 2))
 
-        this.leaveFromQueue(shortid);
+        this.OnLeaveQueue(shortid);
     }
 
-    async leaveFromQueue(shortid) {
+
+    calculateQueueSizes() {
+
+        for (let key in this.queues) {
+            let parts = key.split('/');
+            let game_slug = parts[parts.length - 1];
+            let mode = parts[0];
+
+            let list = this.queues[key];
+
+            if (list.length == 0) {
+                if (key in this.queueSizes)
+                    delete this.queueSizes[key]
+                continue;
+            }
+            list.forEach((captain) => {
+
+                if (!this.queuedParties[captain] || !this.queuedParties[captain][key]) {
+                    return;
+                }
+                let party = this.queuedParties[captain][key];
+                if (!(key in this.queueSizes))
+                    this.queueSizes[key] = 0;
+
+                // if (type == 'add')
+                this.queueSizes[key] += party?.players?.length || 0;
+                // else
+                // this.queueSizes[key] -= party?.players?.length || 0;
+            });
+        }
+
+        if (this.queueSizesTimeout) {
+            clearTimeout(this.queueSizesTimeout);
+        }
+        if (this.queueSizesRestartCount >= 10) {
+            this.queueSizesRestartCount = 0;
+            this.broadcastQueueStats();
+        }
+        else {
+            this.queueSizesRestartCount++;
+            this.queueSizesTimeout = setTimeout(this.broadcastQueueStats, 1000 * this.queueSizesRestartCount)
+        }
+
+        return this.queueSizes;
+    }
+
+    broadcastQueueStats = () => {
+        this.queueSizes.type = 'queueStats';
+        rabbitmq.publish('ws', 'onQueueUpdate', this.queueSizes);
+        this.queueSizesRestartCount = 0;
+    }
+
+    async OnLeaveQueue(shortid) {
 
         let parties = this.queuedParties[shortid];
 
         if (!parties) {
-            console.warn("[leaveFromQueue] Captain not in our list: ", shortid);
+            console.warn("[OnLeaveQueue] Captain not in our list: ", shortid);
             return;
         }
 
@@ -221,81 +277,9 @@ class QueueManager {
         }
 
         rabbitmq.publish('ws', 'onQueueUpdate', { type: 'removed', payload: response });
-
-
-
         delete this.queuedParties[shortid];
+        this.calculateQueueSizes('remove');
 
-
-
-        // let player = this.players[shortid];
-        // if (!player) {
-        //     return;
-        // }
-
-        // //remove player from specific mode 
-        // if (mode) {
-        //     if (player[mode])
-        //         for (var game_slug in player[mode]) {
-        //             let queue = player[mode][game_slug];
-        //             try {
-        //                 redis.srem('queues/' + mode + '/' + game_slug, shortid);
-        //                 if (queue.node.list.size() == 1) {
-        //                     redis.hdel('queueExists', mode + '/' + game_slug);
-        //                     redis.hset('queueCount', game_slug, 0);
-        //                 }
-        //             }
-        //             catch (e) {
-
-        //             }
-
-        //             queue.node.remove();
-
-
-        //         }
-        // }
-        // //remove player from all modes
-        // else {
-        //     for (var m in player) {
-        //         for (var game_slug in player[m]) {
-        //             let queue = player[m][game_slug];
-
-        //             try {
-        //                 redis.srem('queues/' + m + '/' + game_slug, shortid);
-        //                 if (queue.node.list.size() == 1) {
-        //                     redis.hdel('queueExists', m + '/' + game_slug);
-        //                     redis.hset('queueCount', game_slug, 0);
-        //                 }
-
-        //                 let gameinfo = await storage.getGameInfo(game_slug);
-        //                 let username = this.playerNames[shortid];
-        //                 if (gameinfo && gameinfo.maxplayers > 1) {
-        //                     await rabbitmq.publishQueue('notifyDiscord', { 'type': 'queue', shortid, username, game_title: (gameinfo?.name || game_slug), game_slug, mode: m, thumbnail: (gameinfo?.preview_images || '') })
-        //                 }
-        //             }
-        //             catch (e) {
-        //                 console.error(e);
-        //             }
-
-
-        //             queue.node.remove();
-        //         }
-        //     }
-        // }
-
-        // delete this.players[shortid];
-        // delete this.playerNames[shortid];
-
-
-        // try {
-        //     redis.hdel('queuePlayers', shortid);
-        // }
-        // catch (e) {
-        //     console.error(e);
-        // }
-
-
-        // console.log("Removed player " + shortid + " from all queues")
     }
 
     /**
@@ -308,9 +292,9 @@ class QueueManager {
      * @returns 
      */
 
-    async onAddToQueue(msg) {
+    async onJoinQueue(msg) {
 
-        console.log("onAddToQueue", JSON.stringify(msg, null, 2));
+        console.log("onJoinQueue", JSON.stringify(msg, null, 2));
 
         if (!msg)
             return false;
@@ -411,6 +395,8 @@ class QueueManager {
         }
 
         rabbitmq.publish('ws', 'onQueueUpdate', { type: 'added', payload: msg });
+
+        this.calculateQueueSizes('add');
     }
 
     async addToQueue(party, skipRedis) {
@@ -740,7 +726,7 @@ class QueueManager {
 
             for (const captain of chosenParties) {
 
-                this.leaveFromQueue(captain);
+                this.OnLeaveQueue(captain);
 
             }
 
@@ -826,7 +812,7 @@ class QueueManager {
 
             for (const captain of chosenParties) {
 
-                this.leaveFromQueue(captain);
+                this.OnLeaveQueue(captain);
 
             }
         }
@@ -1077,7 +1063,7 @@ class QueueManager {
         //     }
         // }
 
-        this.leaveFromQueue(shortid);
+        this.OnLeaveQueue(shortid);
         // console.log("cleanupPlayer removing queues: ", shortid);
         // let player = this.players[shortid]
 
@@ -1299,7 +1285,7 @@ async function start() {
     }
 
     for (const team of teams) {
-        let teamid = await q.onAddToTeam(team);
+        let teamid = await q.onOnJoinTeam(team);
         if (teamid) {
             team.teamid = teamid;
         }

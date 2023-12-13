@@ -6,35 +6,35 @@ class Events {
 
     constructor() { }
 
-    addLeaveFromTeamListener(func) {
+    addOnLeaveTeamListener(func) {
         emitter.on('onLeaveTeam', func);
     }
 
-    emitLeaveFromTeam(payload) {
+    emitOnLeaveTeam(payload) {
         emitter.emit('onLeaveTeam', payload);
     }
 
-    addAddToQueueListener(func) {
+    addOnJoinQueueListener(func) {
         emitter.on('onJoinQueue', func);
     }
 
-    addAddToTeamListener(func) {
+    addOnJoinTeamListener(func) {
         emitter.on('onJoinTeam', func);
     }
 
-    emitAddToTeam(payload) {
+    emitOnJoinTeam(payload) {
         emitter.emit('onJoinTeam', payload);
     }
 
-    emitAddToQueue(payload) {
+    emitOnJoinQueue(payload) {
         emitter.emit('onJoinQueue', payload);
     }
 
-    addLeaveFromQueueListener(func) {
+    addOnLeaveQueueListener(func) {
         emitter.on('onLeaveQueue', func);
     }
 
-    emitLeaveFromQueue(payload) {
+    emitOnLeaveQueue(payload) {
         emitter.emit('onLeaveQueue', payload);
     }
 
