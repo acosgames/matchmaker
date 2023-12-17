@@ -799,7 +799,7 @@ class QueueManager {
             //move players into the team
             for (const player of party.players) {
                 // let player = party.players[shortid];
-                selectedTeam.players.push({ shortid: player.shortid, displayname: player.displayname, rating: player.rating });
+                selectedTeam.players.push({ shortid: player.shortid, displayname: player.displayname, rating: player.rating, portraitid: player.portraitid, countrycode: player.countrycode });
             }
 
             selectedTeam.captains.push(party.captain);
@@ -893,6 +893,8 @@ class QueueManager {
                 action.user.id = player.shortid;
                 action.user.displayname = player.displayname;
                 action.user.rating = player.rating;
+                action.user.portraitid = player.portraitid || 1;
+                action.user.countrycode = player.countrycode || 'US';
 
                 shortids.push(player.shortid);
 
