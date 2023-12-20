@@ -306,11 +306,30 @@ class QueueManager {
 
         }
 
+        let existingParty = this.queuedParties[msg.captain];
+        // if (existingParty) {
+        //     for (let queue of existingParty.queues) {
+        //         if (!msg.queues.find(q => q.game_slug == queue.game_slug && q.mode == queue.mode))
+        //             msg.queues.push(queue);
+        //     }
+        // }
 
+        //builds a group for every mode/game_slug pair
+        let party = {
+            captain,
+            players,
+            teamid,
+            threshold: existingParty?.threshold || 0,
+            createDate: existingParty?.createDate || Date.now(),
+            queues: existingParty?.queues || []
+        };
 
         //builds shortid and game_slug lists to query player ratings of group
         let shortids = [];
         let game_slugs = [];
+        //existing party queues
+        for (const queue of party.queues)
+            game_slugs.push(queue.game_slug);
         for (const queue of msg.queues)
             game_slugs.push(queue.game_slug);
         for (const player of msg.players)
@@ -320,15 +339,7 @@ class QueueManager {
         //find all player ratings for each game being queued
         let groupRatings = await rooms.findGroupRatings(shortids, game_slugs);
 
-        //builds a group for every mode/game_slug pair
-        let party = {
-            captain,
-            players,
-            teamid,
-            threshold: 0,
-            createDate: Date.now(),
-            queues: []
-        };
+
         for (const queue of msg.queues) {
 
             let gameinfo = await storage.getGameInfo(queue.game_slug);
@@ -606,7 +617,7 @@ class QueueManager {
             }
 
             let queue = party.queues.find(queue => queue.game_slug == game_slug && queue.mode == mode)
-
+            if (!queue) return;
             let lobbyId = parseInt(Math.ceil(queue.rating / offset));
             console.log("[" + captain + "] = ", lobbyId, queue.rating)
 
