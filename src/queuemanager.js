@@ -331,7 +331,8 @@ class QueueManager {
         for (const queue of party.queues)
             game_slugs.push(queue.game_slug);
         for (const queue of msg.queues)
-            game_slugs.push(queue.game_slug);
+            if (!game_slugs.find(gs => gs == queue.game_slug))
+                game_slugs.push(queue.game_slug);
         for (const player of msg.players)
             shortids.push(player.shortid);
 
@@ -341,7 +342,8 @@ class QueueManager {
 
 
         for (const queue of msg.queues) {
-
+            if (party.queues.find(q => q.game_slug == queue.game_slug))
+                continue;
             let gameinfo = await storage.getGameInfo(queue.game_slug);
             queue.preview_image = gameinfo.preview_images;
             queue.name = gameinfo.name;
