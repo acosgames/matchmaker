@@ -46,8 +46,8 @@ class QueueManager {
         this.processed = {};
         this.count = 0;
 
-        events.addOnLeaveTeamListener(this.onOnLeaveTeam.bind(this));
-        events.addOnJoinTeamListener(this.onOnJoinTeam.bind(this));
+        events.addOnLeavePartyListener(this.onLeaveParty.bind(this));
+        events.addOnJoinPartyListener(this.onJoinParty.bind(this));
         events.addOnJoinQueueListener(this.onJoinQueue.bind(this));
         events.addOnLeaveQueueListener(this.onOnLeaveQueue.bind(this));
     }
@@ -73,9 +73,9 @@ class QueueManager {
         return x != null && (typeof x === 'object' || typeof x === 'function') && !Array.isArray(x);
     }
 
-    async onOnJoinTeam(payload) {
+    async onJoinParty(payload) {
 
-        let teamid = payload.teamid;
+        let partyid = payload.partyid;
         let players = payload.players;
         let captain = payload.captain;
 
@@ -83,52 +83,52 @@ class QueueManager {
             return false;
         }
 
-        if (!teamid) {
-            teamid = genShortId(8)
+        if (!partyid) {
+            partyid = genShortId(8)
         }
 
-        //check if we have existing team
-        let teaminfo = await storage.getTeam(teamid) || { teamid, players, captain };
+        //check if we have existing party
+        let partyinfo = await storage.getParty(partyid) || { partyid, players, captain };
 
         //update the players
-        teaminfo.players = players;
+        partyinfo.players = players;
 
 
 
-        //update our team roster
-        storage.setTeam(teamid, teaminfo);
+        //update our party roster
+        storage.setParty(partyid, partyinfo);
 
-        //let users know their team was updated
-        rabbitmq.publish('ws', 'joinedTeam', teaminfo);
+        //let users know their party was updated
+        rabbitmq.publish('ws', 'joinedTeam', partyinfo);
 
-        return teamid;
+        return partyid;
     }
 
-    async onOnLeaveTeam(payload) {
-        let teamid = payload.teamid;
+    async onLeaveParty(payload) {
+        let partyid = payload.partyid;
         let shortid = payload.shortid;
 
-        let teaminfo = await storage.getTeam(teamid);
-        if (!teaminfo)
+        let partyinfo = await storage.getParty(partyid);
+        if (!partyinfo)
             return;
 
-        if (teaminfo?.players[shortid]) {
-            delete teaminfo.players[shortid];
+        if (partyinfo?.players[shortid]) {
+            delete partyinfo.players[shortid];
         }
 
-        if (teaminfo?.captain == shortid) {
-            let playerList = Object.keys(teaminfo.players);
-            teaminfo.captain = playerList[Math.floor(Math.random() * playerList.length)]
+        if (partyinfo?.captain == shortid) {
+            let playerList = Object.keys(partyinfo.players);
+            partyinfo.captain = playerList[Math.floor(Math.random() * playerList.length)]
         }
 
-        if (teaminfo?.players?.length <= 1) {
-            storage.deleteTeam(teamid);
+        if (partyinfo?.players?.length <= 1) {
+            storage.deleteTeam(partyid);
         }
         else {
-            storage.setTeam(teamid, teaminfo);
+            storage.setParty(partyid, partyinfo);
         }
 
-        rabbitmq.publish('ws', 'leaveTeam', teaminfo);
+        rabbitmq.publish('ws', 'leaveParty', partyinfo);
     }
 
     createPlayerQueueMap() {
@@ -247,8 +247,8 @@ class QueueManager {
     }
 
     /**
-     * Add a team into a queue (team can be 1 person or more)
-     * msg.teamid
+     * Add a party into a queue (party can be 1 person or more)
+     * msg.partyid
      * msg.players
      * msg.queues
      * msg.captain
@@ -265,7 +265,7 @@ class QueueManager {
 
 
 
-        let teamid = msg.teamid;
+        let partyid = msg.partyid;
         let queues = msg.queues;
         let players = msg.players;
         let captain = msg.captain;
@@ -279,28 +279,28 @@ class QueueManager {
             return false;
         }
 
-        //if player is in team under a captain, don't allow them to queue
+        //if player is in party under a captain, don't allow them to queue
         if (msg.captain in this.players && this.players[msg.captain] != msg.captain)
             return false;
 
-        //teamid is required for player counts more than 1, if it exists find the team information
-        if (msg.teamid || msg.players.length > 1) {
+        //partyid is required for player counts more than 1, if it exists find the party information
+        if (msg.partyid || msg.players.length > 1) {
 
-            let teaminfo = await storage.getTeam(msg.teamid);
-            if (!teaminfo)
+            let partyinfo = await storage.getParty(msg.partyid);
+            if (!partyinfo)
                 return false;
 
-            //requestor must be the captain of the team
-            if (msg.captain != teaminfo.captain) {
+            //requestor must be the captain of the party
+            if (msg.captain != partyinfo.captain) {
                 return false;
             }
 
             //overwrite the players list sent in request (shouldn't have one but just incase), 
-            // because we have the team players list already
+            // because we have the party players list already
 
             let partyPlayers = [];
-            for (const shortid in teaminfo.players) {
-                partyPlayers.push({ shortid, displayname: teaminfo.players[shortid] })
+            for (const shortid in partyinfo.players) {
+                partyPlayers.push({ shortid, displayname: partyinfo.players[shortid] })
             }
             msg.players = partyPlayers;
 
@@ -318,7 +318,7 @@ class QueueManager {
         let party = {
             captain,
             players,
-            teamid,
+            partyid,
             threshold: existingParty?.threshold || 0,
             createDate: existingParty?.createDate || Date.now(),
             queues: existingParty?.queues || []
@@ -469,7 +469,7 @@ class QueueManager {
                 return false;
             }
 
-            //grab the gameinfo so we know min/max sizes of game and game defined teams
+            //grab the gameinfo so we know min/max sizes of game and game defined partys
             let gameinfo = await storage.getGameInfo(game_slug);
             if (!gameinfo) {
                 console.warn("[matchPlayers] Gameinfo does not exist for: ", game_slug);
@@ -497,7 +497,7 @@ class QueueManager {
                 allPlayerCount += party?.players?.length || 0;
             });
 
-            //simple use case, but in future, make it more advanced based on team sizes too 
+            //simple use case, but in future, make it more advanced based on party sizes too 
             if (allPlayerCount >= gameinfo.minplayers) {
                 this.retryMatchPlayers(mode, game_slug);
             }
@@ -524,15 +524,15 @@ class QueueManager {
     }
 
     createTeamsBySize(gameinfo) {
-        //create the game defined team vacancy sizes and player list
+        //create the game defined party vacancy sizes and player list
         //parties that have leftover players will be pushed to spectator list
         let teamsBySize = [];
         let maxTeamSize = 0;
         //free for all scenario
         if (!gameinfo.maxteams) {
             for (let i = 0; i < gameinfo.maxplayers; i++) {
-                let teamid = i + 1;
-                teamsBySize.push({ team_slug: 'team_' + teamid, maxplayers: 1, minplayers: 1, vacancy: 1, players: [], captains: [] })
+                let partyid = i + 1;
+                teamsBySize.push({ team_slug: 'team_' + partyid, maxplayers: 1, minplayers: 1, vacancy: 1, players: [], captains: [] })
             }
             maxTeamSize = 1;
         }
@@ -541,8 +541,8 @@ class QueueManager {
             let team = gameinfo.teamlist[0];
             let maxteamcount = Math.floor(gameinfo.maxplayers / team.maxplayers)
             for (let i = 0; i < maxteamcount; i++) {
-                let teamid = i + 1;
-                teamsBySize.push({ team_slug: 'team_' + teamid, maxplayers: team.maxplayers, minplayers: team.minplayers, vacancy: team.maxplayers, players: [], captains: [] })
+                let partyid = i + 1;
+                teamsBySize.push({ team_slug: 'team_' + partyid, maxplayers: team.maxplayers, minplayers: team.minplayers, vacancy: team.maxplayers, players: [], captains: [] })
             }
             maxTeamSize = team.maxplayers;
         }
@@ -1009,7 +1009,7 @@ async function start() {
         await sleep(1000);
         //return;
     }
-    // let teamid = payload.teamid;
+    // let partyid = payload.partyid;
     // let players = payload.players;
     // let captain = payload.captain;
 
@@ -1045,14 +1045,14 @@ async function start() {
     }
 
     for (const team of teams) {
-        let teamid = await q.onOnJoinTeam(team);
-        if (teamid) {
-            team.teamid = teamid;
+        let partyid = await q.onJoinParty(team);
+        if (partyid) {
+            team.partyid = partyid;
         }
     }
     // console.log("Created teams:", teams);
 
-    // let teamid = msg.teamid;
+    // let partyid = msg.partyid;
     // let queues = msg.queues;
     // let players = msg.players;
     // let captain = msg.captain;
@@ -1066,8 +1066,8 @@ async function start() {
 
         let queues = [{ mode: 'rank', game_slug: 'test-4' }]
         let captain = team.captain;
-        let teamid = team.teamid;
-        await q.onAddToQueue({ captain, queues, teamid })
+        let partyid = team.partyid;
+        await q.onAddToQueue({ captain, queues, partyid })
 
     }
     // for (const user of fakeusers) {

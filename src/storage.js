@@ -9,20 +9,20 @@ class Storage {
         this.teams = {};
     }
 
-    async setTeam(teamid, teaminfo) {
-        this.teams[teamid] = teaminfo;
-        cache.set('team/' + teamid, teaminfo, 2000);
+    async setParty(teamid, partyinfo) {
+        this.teams[teamid] = partyinfo;
+        cache.set('team/' + teamid, partyinfo, 2000);
     }
 
-    async getTeam(teamid) {
+    async getParty(teamid) {
         if (this.teams[teamid]) {
             return this.teams[teamid];
         }
-        let teaminfo = await cache.get('team/' + teamid);
-        if (teaminfo) {
-            this.teams[teamid] = teaminfo;
+        let partyinfo = await cache.get('team/' + teamid);
+        if (partyinfo) {
+            this.teams[teamid] = partyinfo;
         }
-        return teaminfo;
+        return partyinfo;
     }
 
     async deleteTeam(teamid) {

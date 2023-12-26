@@ -24,19 +24,19 @@ class PlayerReceiver {
 
             await queuemanager.loadQueues();
 
-            await rabbitmq.subscribeQueue('leaveTeam', this.onLeaveTeam.bind(this));
-            await rabbitmq.subscribeQueue('joinTeam', this.onJoinTeam.bind(this));
+            await rabbitmq.subscribeQueue('leaveParty', this.onLeaveParty.bind(this));
+            await rabbitmq.subscribeQueue('joinParty', this.onJoinParty.bind(this));
             await rabbitmq.subscribeQueue('joinQueue', this.onJoinQueue.bind(this));
             await rabbitmq.subscribeQueue('leaveQueue', this.onLeaveQueue.bind(this));
             rs(true);
         })
     }
 
-    async onLeaveTeam(msg) {
-        events.emitOnLeaveTeam(msg);
+    async onLeaveParty(msg) {
+        events.emitOnLeaveParty(msg);
     }
-    async onJoinTeam(msg) {
-        events.emitOnJoinTeam(msg);
+    async onJoinParty(msg) {
+        events.emitOnJoinParty(msg);
     }
     async onJoinQueue(msg) {
         events.emitOnJoinQueue(msg);
