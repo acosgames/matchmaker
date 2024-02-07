@@ -935,14 +935,14 @@ class QueueManager {
         }
 
         await this.sendJoinRequest(gameinfo, room_slug, actions);
-        await this.assignAndNotify(gameinfo, shortids, room_slug);
+        await this.assignAndNotify(gameinfo, shortids, room_slug, room.room_id);
     }
 
-    async assignAndNotify(gameinfo, shortids, room_slug) {
+    async assignAndNotify(gameinfo, shortids, room_slug, room_id) {
         console.log("Assign and Notify: ", shortids, room_slug);
 
         try {
-            await rooms.assignPlayersToRoom(shortids, room_slug, gameinfo.game_slug);
+            await rooms.assignPlayersToRoom(shortids, room_slug, room_id, gameinfo.game_slug);
         }
         catch (e) {
             console.error(e);
