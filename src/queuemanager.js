@@ -1,8 +1,8 @@
 const rabbitmq = require("shared/services/rabbitmq");
 const redis = require("shared/services/redis");
 const rooms = require("shared/services/room");
-const PersonService = require("shared/services/person");
-const person = new PersonService();
+const person = require("shared/services/person");
+// const person = new PersonService();
 
 const profiler = require("shared/util/profiler");
 const credutil = require("shared/util/credentials");
@@ -64,11 +64,7 @@ class QueueManager {
     }
 
     isObject(x) {
-        return (
-            x != null &&
-            (typeof x === "object" || typeof x === "function") &&
-            !Array.isArray(x)
-        );
+        return x != null && (typeof x === "object" || typeof x === "function") && !Array.isArray(x);
     }
 
     async onJoinParty(payload) {
@@ -116,8 +112,7 @@ class QueueManager {
 
         if (partyinfo?.captain == shortid) {
             let playerList = Object.keys(partyinfo.players);
-            partyinfo.captain =
-                playerList[Math.floor(Math.random() * playerList.length)];
+            partyinfo.captain = playerList[Math.floor(Math.random() * playerList.length)];
         }
 
         if (partyinfo?.players?.length <= 1) {
@@ -160,10 +155,7 @@ class QueueManager {
     }
 
     broadcastQueueStats = async () => {
-        console.log(
-            "queuedParties:",
-            JSON.stringify(this.queuedParties, null, 2)
-        );
+        console.log("queuedParties:", JSON.stringify(this.queuedParties, null, 2));
         this.queueSizes = {};
         for (let key in this.queues) {
             let parts = key.split("/");
@@ -195,10 +187,7 @@ class QueueManager {
                 // else
                 // this.queueSizes[key] -= party?.players?.length || 0;
             });
-            console.log(
-                "queueSizes: ",
-                JSON.stringify(this.queueSizes, null, 2)
-            );
+            console.log("queueSizes: ", JSON.stringify(this.queueSizes, null, 2));
         }
 
         this.queueSizes.type = "queueStats";
@@ -217,8 +206,7 @@ class QueueManager {
         try {
             for (let i = 0; i < party.players.length; i++) {
                 let player = party.players[i];
-                if (player.shortid in this.players)
-                    delete this.players[player.shortid];
+                if (player.shortid in this.players) delete this.players[player.shortid];
             }
         } catch (e) {
             console.error(e);
@@ -281,11 +269,7 @@ class QueueManager {
         }
 
         //if player is in party under a captain, don't allow them to queue
-        if (
-            msg.captain in this.players &&
-            this.players[msg.captain] != msg.captain
-        )
-            return false;
+        if (msg.captain in this.players && this.players[msg.captain] != msg.captain) return false;
 
         //partyid is required for player counts more than 1, if it exists find the party information
         if (msg.partyid || msg.players.length > 1) {
@@ -334,16 +318,14 @@ class QueueManager {
         //existing party queues
         for (const queue of party.queues) game_slugs.push(queue.game_slug);
         for (const queue of msg.queues)
-            if (!game_slugs.find((gs) => gs == queue.game_slug))
-                game_slugs.push(queue.game_slug);
+            if (!game_slugs.find((gs) => gs == queue.game_slug)) game_slugs.push(queue.game_slug);
         for (const player of msg.players) shortids.push(player.shortid);
 
         //find all player ratings for each game being queued
         let groupRatings = await rooms.findGroupRatings(shortids, game_slugs);
 
         for (const queue of msg.queues) {
-            if (party.queues.find((q) => q.game_slug == queue.game_slug))
-                continue;
+            if (party.queues.find((q) => q.game_slug == queue.game_slug)) continue;
             let gameinfo = await storage.getGameInfo(queue.game_slug);
             queue.preview_image = gameinfo.preview_images;
             queue.name = gameinfo.name;
@@ -373,8 +355,7 @@ class QueueManager {
 
             //group rating is average + 50% of the way to highest ranked player
             let groupRatingAverage = groupRating / party.players.length;
-            groupRating =
-                groupRatingAverage + (maxRating - groupRatingAverage) * 0.5;
+            groupRating = groupRatingAverage + (maxRating - groupRatingAverage) * 0.5;
 
             queue.rating = groupRating;
 
@@ -471,10 +452,7 @@ class QueueManager {
             //grab the gameinfo so we know min/max sizes of game and game defined partys
             let gameinfo = await storage.getGameInfo(game_slug);
             if (!gameinfo) {
-                console.warn(
-                    "[matchPlayers] Gameinfo does not exist for: ",
-                    game_slug
-                );
+                console.warn("[matchPlayers] Gameinfo does not exist for: ", game_slug);
                 delete this.queues[key];
                 return;
             }
@@ -543,9 +521,7 @@ class QueueManager {
         //battlegrounds scenario
         else if (gameinfo.maxteams == 1) {
             let team = gameinfo.teamlist[0];
-            let maxteamcount = Math.floor(
-                gameinfo.maxplayers / team.maxplayers
-            );
+            let maxteamcount = Math.floor(gameinfo.maxplayers / team.maxplayers);
             for (let i = 0; i < maxteamcount; i++) {
                 let partyid = i + 1;
                 teamsBySize.push({
@@ -562,8 +538,7 @@ class QueueManager {
         //traditional team scenario
         else {
             for (const team of gameinfo.teamlist) {
-                if (team.maxplayers > maxTeamSize)
-                    maxTeamSize = team.maxplayers;
+                if (team.maxplayers > maxTeamSize) maxTeamSize = team.maxplayers;
                 teamsBySize.push({
                     team_slug: team.team_slug,
                     maxplayers: team.maxplayers,
@@ -645,12 +620,7 @@ class QueueManager {
         //create the partySizes of all players in the queue for this mode/game_slug
         for (const lobby of lobbies) {
             if (!lobby) continue;
-            let chosenParties = await this.buildRoomsFromLobby(
-                lobby,
-                gameinfo,
-                mode,
-                []
-            );
+            let chosenParties = await this.buildRoomsFromLobby(lobby, gameinfo, mode, []);
 
             for (const captain of chosenParties) {
                 this.OnLeaveQueue(captain);
@@ -718,12 +688,7 @@ class QueueManager {
         //create the partySizes of all players in the queue for this mode/game_slug
         for (const lobby of lobbies) {
             if (!lobby) continue;
-            let chosenParties = await this.buildRoomsFromLobby(
-                lobby,
-                gameinfo,
-                mode,
-                []
-            );
+            let chosenParties = await this.buildRoomsFromLobby(lobby, gameinfo, mode, []);
 
             for (const captain of chosenParties) {
                 this.OnLeaveQueue(captain);
@@ -833,8 +798,7 @@ class QueueManager {
             //     selectedTeam.spectators.push(player);
 
             //update team vacancy count
-            selectedTeam.vacancy =
-                selectedTeam.maxplayers - selectedTeam.players.length;
+            selectedTeam.vacancy = selectedTeam.maxplayers - selectedTeam.players.length;
         }
 
         //make sure all teams have minimum player requirements
@@ -860,18 +824,12 @@ class QueueManager {
             }
         }
 
-        if (
-            passedTeams.length >= gameinfo.minteams &&
-            totalPlayers >= gameinfo.minplayers
-        ) {
+        if (passedTeams.length >= gameinfo.minteams && totalPlayers >= gameinfo.minplayers) {
             await this.createGameAndJoinPlayers(gameinfo, mode, teamsBySize);
             console.warn("Created Game Room: ", teamsBySize);
 
             chosenParties = chosenParties.concat(tempChosenParties);
-            if (
-                remainingPlayers >= gameinfo.minplayers &&
-                remainingPlayers != originalLobbySize
-            ) {
+            if (remainingPlayers >= gameinfo.minplayers && remainingPlayers != originalLobbySize) {
                 chosenParties = await this.buildRoomsFromLobby(
                     newLobby,
                     gameinfo,
@@ -920,8 +878,7 @@ class QueueManager {
 
                 shortids.push(player.shortid);
 
-                if (player.rating > highestRating)
-                    highestRating = player.rating;
+                if (player.rating > highestRating) highestRating = player.rating;
 
                 actions.push(action);
 
@@ -932,12 +889,7 @@ class QueueManager {
         }
 
         //create room using the first player in lobby
-        let room = await this.createRoom(
-            gameinfo.game_slug,
-            mode,
-            owner,
-            highestRating
-        );
+        let room = await this.createRoom(gameinfo.game_slug, mode, owner, highestRating);
         let room_slug = room.room_slug;
 
         for (let action of actions) {
@@ -952,11 +904,7 @@ class QueueManager {
         console.log("Assign and Notify: ", shortids, room_slug);
 
         try {
-            await rooms.assignPlayersToRoom(
-                shortids,
-                room_slug,
-                gameinfo.game_slug
-            );
+            await rooms.assignPlayersToRoom(shortids, room_slug, gameinfo.game_slug);
         } catch (e) {
             console.error(e);
         }
