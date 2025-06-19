@@ -199,6 +199,7 @@ class QueueManager {
         let party = this.queuedParties[captain];
 
         if (!party) {
+            await redis.hdel("queuedParties", captain);
             console.warn("[OnLeaveQueue] Captain not in party list: ", captain);
             return;
         }
@@ -322,8 +323,12 @@ class QueueManager {
         for (const player of msg.players) shortids.push(player.shortid);
 
         //find all player ratings for each game being queued
-        let groupRatings = await rooms.findGroupRatings(shortids, game_slugs);
+        let { playerRatings, invalidPlayers } = await rooms.findGroupRatings(shortids, game_slugs);
 
+        if (invalidPlayers?.length > 0) {
+            this.OnLeaveQueue(captain);
+            return;
+        }
         for (const queue of msg.queues) {
             if (party.queues.find((q) => q.game_slug == queue.game_slug)) continue;
             let gameinfo = await storage.getGameInfo(queue.game_slug);
@@ -341,7 +346,7 @@ class QueueManager {
             let minRating = Number.MAX_SAFE_INTEGER;
             let maxRating = 0;
             for (let player of party.players) {
-                let playerRating = groupRatings[player.shortid][game_slug];
+                let playerRating = playerRatings[player.shortid][game_slug];
                 player.rating = playerRating.rating;
 
                 if (player.rating < minRating) minRating = player.rating;
