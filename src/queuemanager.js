@@ -1,11 +1,11 @@
-const rabbitmq = require("shared/services/rabbitmq");
-const redis = require("shared/services/redis");
-const rooms = require("shared/services/room");
-const person = require("shared/services/person");
+const rabbitmq = require('shared/services/rabbitmq');
+const redis = require('shared/services/redis');
+const rooms = require('shared/services/room');
+const person = require('shared/services/person');
 // const person = new PersonService();
 
-const profiler = require("shared/util/profiler");
-const credutil = require("shared/util/credentials");
+const profiler = require('shared/util/profiler');
+const credutil = require('shared/util/credentials');
 const credentials = credutil();
 
 const events = require("./events");
@@ -20,7 +20,7 @@ webpush.setVapidDetails(
     credentials.webpush.privatekey
 );
 
-const { genShortId } = require("shared/util/idgen");
+const { genShortId } = require('shared/util/idgen');
 
 const yallist = require("./yallist");
 
