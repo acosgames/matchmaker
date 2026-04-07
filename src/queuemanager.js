@@ -1,11 +1,11 @@
-const rabbitmq = require('shared/services/rabbitmq');
-const redis = require('shared/services/redis');
-const rooms = require('shared/services/room');
-const person = require('shared/services/person');
+const rabbitmq = require('shared/services/rabbitmq.js');
+const redis = require('shared/services/redis.js');
+const rooms = require('shared/services/room.js');
+const person = require('shared/services/person.js');
 // const person = new PersonService();
 
-const profiler = require('shared/util/profiler');
-const credutil = require('shared/util/credentials');
+const profiler = require('shared/util/profiler.js');
+const credutil = require('shared/util/credentials.js');
 const credentials = credutil();
 
 const events = require("./events");
@@ -20,7 +20,7 @@ webpush.setVapidDetails(
     credentials.webpush.privatekey
 );
 
-const { genShortId } = require('shared/util/idgen');
+const { genShortId } = require('shared/util/idgen.js');
 
 const yallist = require("./yallist");
 
@@ -158,11 +158,11 @@ class QueueManager {
         console.log("queuedParties:", JSON.stringify(this.queuedParties, null, 2));
         this.queueSizes = {};
         for (let key in this.queues) {
-            let parts = key.split("/");
-            let game_slug = parts[parts.length - 1];
-            let mode = parts[0];
+            // let parts = key.split("/");
+            // let game_slug = parts[parts.length - 1];
+            // let mode = parts[0];
 
-            let gameinfo = await storage.getGameInfo(game_slug);
+            // let gameinfo = await storage.getGameInfo(game_slug);
             let list = this.queues[key];
 
             if (list.length == 0) {
@@ -174,20 +174,16 @@ class QueueManager {
                 }
                 let party = this.queuedParties[captain];
                 if (!(key in this.queueSizes))
-                    this.queueSizes[key] = {
-                        name: gameinfo.name,
-                        preview_image: gameinfo.preview_images,
-                        count: 0,
-                    };
+                    this.queueSizes[key] = 0;   
 
                 // if (type == 'add')
                 console.log("Adding", key, party.captain, party.players.length);
-                this.queueSizes[key].count += party?.players?.length || 0;
+                this.queueSizes[key] += party?.players?.length || 0;
 
                 // else
                 // this.queueSizes[key] -= party?.players?.length || 0;
             });
-            console.log("queueSizes: ", JSON.stringify(this.queueSizes, null, 2));
+            console.log("queueSizes: ", this.queueSizes);
         }
 
         this.queueSizes.type = "queueStats";
@@ -331,9 +327,9 @@ class QueueManager {
         }
         for (const queue of msg.queues) {
             if (party.queues.find((q) => q.game_slug == queue.game_slug)) continue;
-            let gameinfo = await storage.getGameInfo(queue.game_slug);
-            queue.preview_image = gameinfo.preview_images;
-            queue.name = gameinfo.name;
+            // let gameinfo = await storage.getGameInfo(queue.game_slug);
+            // queue.preview_image = gameinfo.preview_images;
+            // queue.name = gameinfo.name;
 
             party.queues.push(queue);
         }

@@ -1,6 +1,6 @@
 
-const cache = require('shared/services/cache');
-const room = require('shared/services/room');
+const cache = require('shared/services/cache.js');
+const room = require('shared/services/room.js');
 
 class Storage {
 
@@ -9,27 +9,27 @@ class Storage {
         this.teams = {};
     }
 
-    async setParty(teamid, partyinfo) {
-        this.teams[teamid] = partyinfo;
-        cache.set('team/' + teamid, partyinfo, 2000);
+    async setParty(partyid, partyinfo) {
+        this.teams[partyid] = partyinfo;
+        cache.set('party/' + partyid, partyinfo, 2000);
     }
 
-    async getParty(teamid) {
-        if (this.teams[teamid]) {
-            return this.teams[teamid];
+    async getParty(partyid) {
+        if (this.teams[partyid]) {
+            return this.teams[partyid];
         }
-        let partyinfo = await cache.get('team/' + teamid);
+        let partyinfo = await cache.get('party/' + partyid);
         if (partyinfo) {
-            this.teams[teamid] = partyinfo;
+            this.teams[partyid] = partyinfo;
         }
         return partyinfo;
     }
 
-    async deleteTeam(teamid) {
-        if (this.teams[teamid]) {
-            delete this.teams[teamid];
+    async deleteTeam(partyid) {
+        if (this.teams[partyid]) {
+            delete this.teams[partyid];
         }
-        await cache.del('team/' + teamid);
+        await cache.del('party/' + partyid);
     }
 
     async getRoomMeta(room_slug) {

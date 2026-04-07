@@ -2,7 +2,7 @@
 // const wm = new WorkerManager();
 
 const axios = require('axios');
-const credutil = require('shared/util/credentials');
+const credutil = require('shared/util/credentials.js');
 
 const playerreceiver = require('./src/playerreceiver');
 
