@@ -2,10 +2,14 @@
   "name": "matchmaker",
   "version": "1.0.0",
   "description": "Match making for five second games",
-  "main": "index.js",
+  "type": "module",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "npm run dev",
-    "dev": "pm2 start index.js --name matchmaker --node-args=\"--inspect=10005 --trace-warnings\" --watch \". ../shared\" --ignore-watch \"package.json node_modules\"",
+    "start": "concurrently -n tsc,node \"npm:build:watch\" \"npm:start:watch\"",
+    "build": "tsc -p tsconfig.json",
+    "build:watch": "tsc -p tsconfig.json --noCheck --watch --preserveWatchOutput",
+    "start:watch": "node --inspect=9942 --watch --enable-source-maps --watch-preserve-output dist/index.js",
+    "dev": "pm2 start dist/index.js --name matchmaker --node-args=\"--inspect=10005 --trace-warnings\" --watch \"dist ../shared\" --ignore-watch \"package.json node_modules\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -23,5 +27,9 @@
     "shared": "file:../shared",
     "web-push": "^3.4.5",
     "yallist": "^4.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^20.19.39"
   }
 }
