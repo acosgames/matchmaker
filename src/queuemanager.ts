@@ -24,6 +24,7 @@ webpush.setVapidDetails(
 import { genShortId } from "shared/util/idgen.js";
 
 import yallist from "./yallist.js";
+import { GameInfo } from "shared/types/game.js";
 
 class QueueManager {
     constructor() {
@@ -456,12 +457,15 @@ class QueueManager {
             }
 
             //grab the gameinfo so we know min/max sizes of game and game defined partys
-            let gameinfo = await storage.getGameInfo(game_slug);
+            let gameinfo:GameInfo | null = await storage.getGameInfo(game_slug);
             if (!gameinfo) {
                 console.warn("[matchPlayers] Gameinfo does not exist for: ", game_slug);
                 delete this.queues[key];
                 return;
             }
+
+            // let gameSettings: GameSettings | null = await storage.getGameSettings(game_slug, gameinfo.version);
+            // gameinfo.gameSettings = gameSettings;
 
             let result = false;
             //ranked matches try to match based on user ratings
@@ -504,7 +508,7 @@ class QueueManager {
         return { selected, spectators };
     }
 
-    createTeamsBySize(gameinfo) {
+    createTeamsBySize(gameinfo: GameInfo) {
         //create the game defined party vacancy sizes and player list
         //parties that have leftover players will be pushed to spectator list
         let teamsBySize = [];
@@ -514,6 +518,7 @@ class QueueManager {
             for (let i = 0; i < gameinfo.maxplayers; i++) {
                 let partyid = i + 1;
                 teamsBySize.push({
+                    teamid: teamsBySize.length,
                     team_slug: "team_" + partyid,
                     maxplayers: 1,
                     minplayers: 1,
@@ -531,6 +536,7 @@ class QueueManager {
             for (let i = 0; i < maxteamcount; i++) {
                 let partyid = i + 1;
                 teamsBySize.push({
+                    teamid: teamsBySize.length,
                     team_slug: "team_" + partyid,
                     maxplayers: team.maxplayers,
                     minplayers: team.minplayers,
@@ -546,6 +552,7 @@ class QueueManager {
             for (const team of gameinfo.teamlist) {
                 if (team.maxplayers > maxTeamSize) maxTeamSize = team.maxplayers;
                 teamsBySize.push({
+                    teamid: teamsBySize.length,
                     team_slug: team.team_slug,
                     maxplayers: team.maxplayers,
                     minplayers: team.minplayers,
@@ -574,7 +581,7 @@ class QueueManager {
     //add party to random team that supports their size
     //update new gameteam sizes to match vacancies
     //break and move to next party
-    async attemptRankedMatch(gameinfo, list) {
+    async attemptRankedMatch(gameinfo: GameInfo, list) {
         let game_slug = gameinfo.game_slug;
         let mode = "rank";
 
@@ -647,7 +654,7 @@ class QueueManager {
         return list.size() == 0;
     }
 
-    async attemptAnyMatch(gameinfo, list) {
+    async attemptAnyMatch(gameinfo: GameInfo, list) {
         let game_slug = gameinfo.game_slug;
         let mode = "experimental";
 
@@ -715,7 +722,7 @@ class QueueManager {
         return list.size() == 0;
     }
 
-    async buildRoomsFromLobby(lobby, gameinfo, mode, chosenParties) {
+    async buildRoomsFromLobby(lobby, gameinfo: GameInfo, mode, chosenParties) {
         chosenParties = chosenParties || [];
 
         let key = mode + "/" + gameinfo.game_slug;
@@ -863,19 +870,20 @@ class QueueManager {
         return false;
     }
 
-    async createGameAndJoinPlayers(gameinfo, mode, gameroom) {
+    async createGameAndJoinPlayers(gameinfo: GameInfo, mode, teamSettings) {
         let owner = null;
         let actions = [];
         let highestRating = 0;
 
         let shortids = [];
-        for (const team of gameroom) {
+        for (const team of teamSettings) {
             if (owner == null && team.players.length > 0) {
                 owner = team.players[0].shortid;
             }
 
             for (const player of team.players) {
                 let action = { type: "join", user: {} };
+                action.user.id = -1;
                 action.user.shortid = player.shortid;
                 action.user.displayname = player.displayname;
                 action.user.rating = player.rating;
@@ -884,13 +892,13 @@ class QueueManager {
 
                 shortids.push(player.shortid);
 
-                if (player.rating > highestRating) highestRating = player.rating;
+                if (player.rating > highestRating) 
+                    highestRating = player.rating;
 
+                if (gameinfo.maxteams && gameinfo.maxteams > 0) 
+                    action.user.teamid = typeof team.teamid === 'number' ? team.teamid : -1;
+                
                 actions.push(action);
-
-                if (!gameinfo.maxteams) continue;
-
-                action.user.team_slug = team.team_slug;
             }
         }
 
@@ -925,7 +933,7 @@ class QueueManager {
     async createRoom(game_slug, mode, shortid, rating) {
         if (mode != "rank") rating = 0;
 
-        let roomMeta = await rooms.createRoom(shortid, rating, game_slug, mode);
+        let roomMeta = await rooms.createRoom(shortid, rating, game_slug, mode); 
         return roomMeta;
     }
 

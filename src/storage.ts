@@ -1,7 +1,9 @@
 
 import cache from "shared/services/cache.js";
 import room from "shared/services/room.js";
+import ObjectStorageService from "shared/services/objectstorage.js";
 
+const s3 = new ObjectStorageService();
 class Storage {
 
     constructor() {
@@ -60,7 +62,25 @@ class Storage {
         }
         return null;
     }
-    async getGameInfo(game_slug) {
+
+    async getGameSettings(game_slug, version): Promise<GameSettings | null> {
+        try {
+            let key = 'g/' + game_slug + '/settings.' + version + '.json';
+            let settings = await cache.get(key);
+            if (settings)
+                return JSON.parse(settings);
+
+            settings = await s3.downloadPublicScript(key);
+            cache.set(key, settings, 36000);
+            return JSON.parse(settings);
+        }
+        catch (e) {
+            console.error(e);
+        }
+        return null;
+    }
+
+    async getGameInfo(game_slug): Promise<GameInfo | null> {
         try {
             let gameinfo = await room.getGameInfo(game_slug);
             return gameinfo;
