@@ -229,7 +229,8 @@ class QueueManager {
             });
 
             let key = `${party.captain}/${queue.mode}/${queue.game_slug}`;
-            let node = this.partyNodes[key];
+            let node = this.partyNodes[key]; 
+            if( node ) 
             node.remove();
             delete this.partyNodes[key];
         }
