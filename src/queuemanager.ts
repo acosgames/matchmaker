@@ -5,6 +5,8 @@ import ratings from "shared/services/ratings.js";
 import person from "shared/services/person.js";
 // const person = new PersonService();
 
+import { PartyQueue, QueueStats } from "shared/types/queue.js";
+
 import profiler from "shared/util/profiler.js";
 import credutil from "shared/util/credentials.js";
 const credentials = credutil();
@@ -27,6 +29,25 @@ import yallist from "./yallist.js";
 import { GameInfo } from "shared/types/game.js";
 
 class QueueManager {
+
+    timeouts: Record<string, any>;
+    queues: Record<string, any>;
+    players: Record<string, any>;
+    playerNames: Record<string, any>;
+    attempts: Record<string, any>;
+
+    queuedParties: Record<string, PartyQueue>;
+    partyNodes: Record<string, any>;
+    
+    queueSizes: Record<string, QueueStats> = {};
+    queueSizesTimeout: any;
+    queueSizesRestartCount: number;
+
+    teams: Record<string, any>;
+
+    processed: Record<string, any>;
+    count: number;
+
     constructor() {
         this.timeouts = {};
         this.queues = {};
@@ -160,27 +181,31 @@ class QueueManager {
         console.log("queuedParties:", JSON.stringify(this.queuedParties, null, 2));
         this.queueSizes = {};
         for (let key in this.queues) {
-            // let parts = key.split("/");
-            // let game_slug = parts[parts.length - 1];
-            // let mode = parts[0];
+            let [mode, game_slug] = key.split("/");
+            // let parts = key.split("/"); 
+            // let game_slug = parts[parts.length - 1]; 
+            // let mode = parts[0]; 
 
-            // let gameinfo = await storage.getGameInfo(game_slug);
+            // let gameinfo = await storage.getGameInfo(game_slug); 
             let list = this.queues[key];
 
             if (list.length == 0) {
                 continue;
             }
+            
+            let gameinfo = await storage.getGameInfo(game_slug);
             list.forEach((captain) => {
                 if (!this.queuedParties[captain]) {
-                    return;
+                    return; 
                 }
-                let party = this.queuedParties[captain];
-                if (!(key in this.queueSizes))
-                    this.queueSizes[key] = 0;   
+ 
+                let party = this.queuedParties[captain]
+                if (!(key in this.queueSizes)) 
+                    this.queueSizes[key] = { waitingPlayers: 0, name: gameinfo.name, preview_images: gameinfo.preview_images } as QueueStats;
 
                 // if (type == 'add')
                 // console.log("Adding", key, party.captain, party.players.length);
-                this.queueSizes[key] += party?.players?.length || 0;
+                this.queueSizes[key].waitingPlayers += party?.players?.length || 0;
 
                 // else
                 // this.queueSizes[key] -= party?.players?.length || 0;
@@ -229,9 +254,9 @@ class QueueManager {
             });
 
             let key = `${party.captain}/${queue.mode}/${queue.game_slug}`;
-            let node = this.partyNodes[key]; 
-            if( node ) 
-            node.remove();
+            let node = this.partyNodes[key];
+            if (node)
+                node.remove();
             delete this.partyNodes[key];
         }
 
@@ -256,13 +281,13 @@ class QueueManager {
     async onJoinQueue(msg) {
         console.log("onJoinQueue", JSON.stringify(msg, null, 2));
 
-        if (!msg) 
+        if (!msg)
             return false;
 
         let { partyid, queues, players, captain } = msg;
 
         //captain must be specified
-        if (!captain || typeof captain !== "string") 
+        if (!captain || typeof captain !== "string")
             return false;
 
         //there must be players defined to continue
@@ -271,13 +296,13 @@ class QueueManager {
         }
 
         //if player is in party under a captain, don't allow them to queue
-        if (captain in this.players && this.players[captain] != captain) 
+        if (captain in this.players && this.players[captain] != captain)
             return false;
 
         //partyid is required for player counts more than 1, if it exists find the party information
         if (partyid || players.length > 1) {
             let partyinfo = await storage.getParty(partyid);
-            if (!partyinfo) 
+            if (!partyinfo)
                 return false;
 
             //requestor must be the captain of the party
@@ -307,7 +332,7 @@ class QueueManager {
         }
 
         //builds a group for every mode/game_slug pair
-        let party = {
+        let party: PartyQueue = {
             captain,
             players,
             partyid,
@@ -333,12 +358,12 @@ class QueueManager {
             return;
         }
         for (const queue of queues) {
-            if (party.queues.find((q) => q.game_slug == queue.game_slug)) continue;
-            // let gameinfo = await storage.getGameInfo(queue.game_slug);
-            // queue.preview_image = gameinfo.preview_images;
-            // queue.name = gameinfo.name;
+            // if (party.queues.find((q) => q.game_slug == queue.game_slug)) continue;
+            let gameinfo = await storage.getGameInfo(queue.game_slug);
+            queue.preview_images = gameinfo.preview_images;
+            queue.name = gameinfo.name;
 
-            party.queues.push(queue);
+            // party.queues.push(queue);
         }
 
         //set party ratings for each game
@@ -372,13 +397,13 @@ class QueueManager {
 
         rabbitmq.publish("ws", "onQueueUpdate", {
             type: "added",
-            payload: msg,
+            payload: party,
         });
 
         await this.calculateQueueSizes("add");
     }
 
-    async addToQueue(party, queue, skipRedis) {
+    async addToQueue(party: PartyQueue, queue, skipRedis) {
         // captain already in queue, clear out old queue, and add new
         let nodeKey = `${party.captain}/${queue.mode}/${queue.game_slug}`;
         if (nodeKey in this.partyNodes) {
@@ -458,7 +483,7 @@ class QueueManager {
             }
 
             //grab the gameinfo so we know min/max sizes of game and game defined partys
-            let gameinfo:GameInfo | null = await storage.getGameInfo(game_slug);
+            let gameinfo: GameInfo | null = await storage.getGameInfo(game_slug);
             if (!gameinfo) {
                 console.warn("[matchPlayers] Gameinfo does not exist for: ", game_slug);
                 delete this.queues[key];
@@ -893,12 +918,12 @@ class QueueManager {
 
                 shortids.push(player.shortid);
 
-                if (player.rating > highestRating) 
+                if (player.rating > highestRating)
                     highestRating = player.rating;
 
-                if (gameinfo.maxteams && gameinfo.maxteams > 0) 
+                if (gameinfo.maxteams && gameinfo.maxteams > 0)
                     action.user.teamid = typeof team.teamid === 'number' ? team.teamid : -1;
-                
+
                 actions.push(action);
             }
         }
@@ -934,7 +959,7 @@ class QueueManager {
     async createRoom(game_slug, mode, shortid, rating) {
         if (mode != "rank") rating = 0;
 
-        let roomMeta = await rooms.createRoom(shortid, rating, game_slug, mode); 
+        let roomMeta = await rooms.createRoom(shortid, rating, game_slug, mode);
         return roomMeta;
     }
 
